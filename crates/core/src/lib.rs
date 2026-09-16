@@ -1,16 +1,13 @@
-//! Recall Gate core library.
-//!
-//! Domain types and FSRS scheduling land in `pr-core` per `docs/domain.md`.
+//! Recall Gate core library. Domain types per `docs/domain.md`.
 
-/// Smoke hook so CI and `cargo test` prove the workspace layout before domain code exists.
-pub fn workspace_ready() -> bool {
-    true
-}
+mod abort;
+mod cadence;
+mod gate;
+mod ids;
+mod item;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn smoke_workspace_ready() {
-        assert!(super::workspace_ready());
-    }
-}
+pub use abort::Abort;
+pub use cadence::GateCadence;
+pub use gate::{CooldownState, GateError, GatePhase, GateState, LockedState};
+pub use ids::{GateId, ItemId};
+pub use item::{Answer, ChoiceIndex, Deck, Item, ItemError, McqChoices};

@@ -11,5 +11,10 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+rand = "0.8.5"
+uuid = { version = "=1.11.0", features = ["v4"] }
+
 [lints]
 workspace = true
