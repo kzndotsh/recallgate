@@ -1,6 +1,6 @@
 # Protocol reference
 
-The daemon is the only writer of the card database. Lock binaries and MCP are clients.
+The daemon is the only writer of the item database. Lock binaries and MCP are clients.
 
 Transport for v0 is a Unix socket at `$XDG_RUNTIME_DIR/recallgate.sock`. Framing is newline-delimited JSON-RPC 2.0.
 
@@ -10,11 +10,11 @@ There is no `gate_unlock` method.
 
 ### gate_lock
 
-Starts a freeze if a lock backend is bound.
+Starts a freeze if a lock backend is bound and [gate cadence](domain.md#gate-cadence-v0) allows it.
 
 Params (object, all optional unless noted).
 
-- `prompt_id` string. If omitted, the daemon picks a due `Mcq`
+- `prompt_id` string. If omitted, the daemon `pick_item`s from the active deck
 - `reason` string. `idle`, `manual`, or `rpc`
 
 Result on success.
@@ -26,7 +26,8 @@ Errors.
 
 - `no_lock_backend` when no Wayland or X11 backend is running
 - `already_locked`
-- `no_due_prompt`
+- `empty_deck` when there is no non-suspended item to show
+- `cadence_active` when `lock_interval` has not elapsed since the last unlock
 - `grab_busy` on X11 when another client holds the grab
 
 ### gate_status
@@ -52,15 +53,17 @@ Result.
 - `prompt_id` string
 - `card_id` string
 
-In v0 both ids are the same [item id](domain.md#wire-mapping-v0). They may diverge in a future version if presentation snapshots split from schedulable items.
+In v0 both ids are the same [item id](domain.md#wire-mapping-v0). They may diverge in a future version if presentation snapshots split from deck items.
 
 This method does not freeze the session.
 
 ### gate_due
 
+Lists items that may appear on the lock surface in v0. Same set as non-suspended deck items. The name is historical. It does not mean per-item due times. See [domain.md](domain.md#picking-an-item).
+
 Result.
 
-- `prompt_ids` array of strings that are legal lock prompts
+- `prompt_ids` array of strings (`ItemId` values)
 
 ## MCP
 

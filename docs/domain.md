@@ -41,7 +41,7 @@ There is no per-item `due_at`, interval, or scheduler state in v0.
 | --- | --- |
 | `lock_interval` | Minimum duration after an unlock before another freeze may start |
 
-The compositor or idle helper (for example `swayidle`) may still decide *when* to request a lock. The daemon enforces that requests respect `lock_interval` since the last unlock, except for explicit manual or RPC `gate_lock` if the product allows those to bypass the interval.
+The compositor or idle helper (for example `swayidle`) may request a lock when you go idle. The daemon still enforces `lock_interval` since the last unlock before starting another freeze. RPC `gate_lock` uses the same rule in v0.
 
 Store `lock_interval` with daemon settings. It is not a field on each `Item`.
 

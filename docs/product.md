@@ -6,7 +6,7 @@ The loop is a tax on continuing, not a quota to clear. Phone apps that block Ins
 
 ## What the user meets
 
-A freeze covers every monitor. One stem. Four keys. A correct answer unlocks. A wrong answer shows the right choice, stores Again, and still unlocks. Piling more cards after a miss makes abort the rational move.
+A freeze covers every monitor. One stem. Four keys. A correct answer unlocks. A wrong answer shows the right choice, logs an incorrect answer (Again-style in the UI copy), and still unlocks. Piling more cards after a miss makes abort the rational move.
 
 Abort exists and costs more than the card. An obscure chord, a hold, a typed confirm, then a cooldown (about a minute of use), then the freeze returns. There is no Skip control. There is no tray Unlock.
 
