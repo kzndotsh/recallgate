@@ -82,7 +82,7 @@ The flake `devShell` installs the same libraries as the table above. Use it when
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs `make check` on every push and pull request. That is the merge bar for Rust changes until a PR adds crate-specific jobs.
+`.github/workflows/ci.yml` runs `make ci` (format, clippy, tests). Commit subjects are checked by `conventional-commits.yml`. Locally, run `make check` before push to run both.
 
 ## Related docs
 

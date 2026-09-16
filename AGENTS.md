@@ -16,7 +16,8 @@ Operational notes for coding agents working in this repository. Product behavior
 ## Commands
 
 ```bash
-make check          # fmt, clippy, tests, conventional commits (matches CI)
+make check          # fmt, clippy, tests, commit subjects (local pre-push)
+make ci             # fmt, clippy, tests (same as Rust CI job)
 make check-commits  # commit subjects only
 cargo test -p recallgate-core
 ```

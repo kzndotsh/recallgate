@@ -1,6 +1,10 @@
-.PHONY: check check-commits fmt clippy test
+.PHONY: check ci check-commits fmt clippy test
 
+# Local pre-push (includes commit subjects).
 check: fmt clippy test check-commits
+
+# CI and quick verify (commit subjects validated in conventional-commits.yml).
+ci: fmt clippy test
 
 check-commits:
 	@chmod +x scripts/validate-conventional-commits.sh
