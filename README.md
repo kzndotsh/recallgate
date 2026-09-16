@@ -16,6 +16,7 @@ Nix is optional: `nix develop` provides the same libraries as the documented apt
 
 ## Docs
 
+- [Agent guide](AGENTS.md) (for coding agents)
 - [Developing](docs/developing.md)
 - [Why it exists](docs/product.md)
 - [Types and illegal states](docs/domain.md)
