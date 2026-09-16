@@ -46,6 +46,6 @@ Those hosts are not in `docs/plan.md` PR ids. Add them as new PR sections when t
 
 ## Packaging notes
 
-Nix flake plus `wrapGAppsHook4` for the Wayland locker. X11 locker needs xcb or x11rb and RandR.
+Contributors install GTK and Wayland libraries from their distribution or use the optional Nix `devShell` (`docs/developing.md`). Release packaging for the Wayland locker will use `wrapGAppsHook4` when built with Nix; X11 locker needs xcb or x11rb and RandR.
 
 Do not ship the Wayland locker as a Flatpak if the sandbox strips session lock.

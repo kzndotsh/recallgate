@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["crates/core"]
+
+[workspace.package]
+edition = "2021"
+version = "0.0.0"
+license = "MIT"
+repository = "https://github.com/kzndotsh/recallgate"
+rust-version = "1.83"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"

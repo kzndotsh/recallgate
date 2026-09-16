@@ -59,7 +59,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 Each live lane runs on its own cloud VM at the PR head. Drive through `control-cli` from `cursor-team-kit`. Native lock windows have no control-ui skill. See Appendix C.
 
 - [ ] `git fetch origin <head-branch> && git checkout <head SHA>`.
-- [ ] Enter the Nix flake `devShell`. Wait until `cargo --version` prints.
+- [ ] Install the toolchain and system deps per `docs/developing.md` (or `nix develop` if using the optional flake). Wait until `cargo --version` prints.
 - [ ] Deliver input only through `control-cli` commands. Read `cargo test` stdout and journal logs. Do not type into a lock surface from the agent except where a lane names `wtype` or `ydotool`.
 - [ ] Save every screenshot to `/tmp/swarm-<pr-id>/worker-<n>/<slug>.png` and return the paths with the report.
 
@@ -102,7 +102,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 - [ ] Lane 6. Attempt `GatePhase::Idle` while a session id is still held. Save `pr-core-lane-6.png`. Pass when the test asserts the constructor returns `Err`.
 - [ ] Lane 7. `Bail` type has no `ReviewLog` field. Save `pr-core-lane-7.png`. Pass when `cargo test` covers `bail_is_not_a_review`.
 - [ ] Lane 8. Suspended queue cannot become a lock prompt. Save `pr-core-lane-8.png`. Pass when `due_excludes_suspended` passes.
-- [ ] Lane 9. `nix build .#recallgate-core` or the flake check for that crate. Save `pr-core-lane-9.png`. Pass when the Nix build exits 0.
+- [ ] Lane 9. `make check` on the Ubuntu CI-equivalent image (see `.github/workflows/ci.yml`), or `nix build .#recallgate-core` when using Nix. Save `pr-core-lane-9.png`. Pass when the chosen command exits 0.
 - [ ] Lane 10. `cargo fmt --check`. Save `pr-core-lane-10.png`. Pass when rustfmt reports no diffs.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
