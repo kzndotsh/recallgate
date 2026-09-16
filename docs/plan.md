@@ -1,6 +1,6 @@
 # Recall Gate plan
 
-Recall Gate taxes continuing a desktop session with one multiple-choice card. The operator and later owners run this checklist. A freeze ends only by a rating or a paid bail. Stack order is `pr-core`, `pr-store`, `pr-daemon`, then `pr-wayland` and `pr-x11` in parallel, then `pr-mcp`.
+Recall Gate taxes continuing a desktop session with one multiple-choice card. The operator and later owners run this checklist. A freeze ends only by a rating or a paid abort. Stack order is `pr-core`, `pr-store`, `pr-daemon`, then `pr-wayland` and `pr-x11` in parallel, then `pr-mcp`.
 
 ## How to read this
 
@@ -82,7 +82,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 **Build.**
 
 - [ ] Add newtypes `ItemId`, `GateId` in `crates/core/src/ids.rs`.
-- [ ] Add `Item`, `Schedule`, `Rating`, `GatePhase`, `Bail`, `ReviewLog` per [domain.md](domain.md). A bail cannot construct a `ReviewLog`.
+- [ ] Add `Item`, `Schedule`, `Rating`, `GatePhase`, `Abort`, `ReviewLog` per [domain.md](domain.md). An abort cannot construct a `ReviewLog`.
 
 **You see.**
 
@@ -100,7 +100,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 - [ ] Lane 4. Construct an `Mcq` prompt and map a wrong index to `Rating::Again`. Save `pr-core-lane-4.png`. Pass when that test name is in stdout.
 - [ ] Lane 5. Construct a correct index mapped to `Rating::Good`. Save `pr-core-lane-5.png`. Pass when that test name is in stdout.
 - [ ] Lane 6. Attempt `GatePhase::Idle` while a session id is still held. Save `pr-core-lane-6.png`. Pass when the test asserts the constructor returns `Err`.
-- [ ] Lane 7. `Bail` type has no `ReviewLog` field. Save `pr-core-lane-7.png`. Pass when `cargo test` covers `bail_is_not_a_review`.
+- [ ] Lane 7. `Abort` type has no `ReviewLog` field. Save `pr-core-lane-7.png`. Pass when `cargo test` covers `abort_is_not_a_review`.
 - [ ] Lane 8. Suspended queue cannot become a lock prompt. Save `pr-core-lane-8.png`. Pass when `due_excludes_suspended` passes.
 - [ ] Lane 9. `make check` on the Ubuntu CI-equivalent image (see `.github/workflows/ci.yml`), or `nix build .#recallgate-core` when using Nix. Save `pr-core-lane-9.png`. Pass when the chosen command exits 0.
 - [ ] Lane 10. `cargo fmt --check`. Save `pr-core-lane-10.png`. Pass when rustfmt reports no diffs.
@@ -133,7 +133,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 **Build.**
 
-- [ ] Add SQLite persistence for `Item`, schedule snapshots, `GatePhase`, `Bail`, and `ReviewLog` in `crates/core/src/store.rs`. Crash with `Locked` still on disk must reload as `Locked`.
+- [ ] Add SQLite persistence for `Item`, schedule snapshots, `GatePhase`, `Abort`, and `ReviewLog` in `crates/core/src/store.rs`. Crash with `Locked` still on disk must reload as `Locked`.
 
 **You see.**
 
@@ -147,7 +147,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 - [ ] Lane 1. Regression lane against trunk. Run `cargo test -p recallgate-core` at trunk and head. If trunk lacks persistence, record that and gate reload of a locked row plus `test result: ok`. Save `pr-store-lane-1.png`. Pass when head includes `store_roundtrip` ok.
 - [ ] Lane 2. Kill the test process after `begin_lock` then reopen. Save `pr-store-lane-2.png`. Pass when the reopened phase is `Locked`.
-- [ ] Lane 3. Write a `Bail` row and assert `ReviewLog` count is unchanged. Save `pr-store-lane-3.png`. Pass when that assertion is in the test stdout.
+- [ ] Lane 3. Write an `Abort` row and assert `ReviewLog` count is unchanged. Save `pr-store-lane-3.png`. Pass when that assertion is in the test stdout.
 - [ ] Lane 4. Two `Locked` inserts in one file fail. Save `pr-store-lane-4.png`. Pass when the second insert returns `Err`.
 - [ ] Lane 5. Import a fixture JSON prompt and list it as due. Save `pr-store-lane-5.png`. Pass when due count is 1.
 - [ ] Lane 6. Suspended card is absent from due. Save `pr-store-lane-6.png`. Pass when due count is 0 for that card.
@@ -236,7 +236,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 **Build.**
 
-- [ ] Add `ext-session-lock-v1` via `gtk4-session-lock` in `crates/lock-wayland/src/lock.rs`. One window per output. Unlock only after `core` returns a rating or a completed `Bail`.
+- [ ] Add `ext-session-lock-v1` via `gtk4-session-lock` in `crates/lock-wayland/src/lock.rs`. One window per output. Unlock only after `core` returns a rating or a completed `Abort`.
 
 **You see.**
 

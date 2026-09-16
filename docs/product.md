@@ -22,7 +22,7 @@ It will not claim X11 is as strong as Wayland session lock. X11 has no lock obje
 
 ## Why the core is separate
 
-Cards, ratings, bail, and the freeze phase live in a library with no windowing. Wayland, X11, and later Windows or macOS are drivers. MCP is another client of the same daemon. That split is how you move machines without rewriting memory.
+Cards, ratings, abort, and the freeze phase live in a library with no windowing. Wayland, X11, and later Windows or macOS are drivers. MCP is another client of the same daemon. That split is how you move machines without rewriting memory.
 
 ## Wrong-answer policy
 

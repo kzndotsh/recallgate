@@ -4,7 +4,7 @@ Names in this file are the only names for these ideas in `crates/core`. Product 
 
 ## What drives implementation
 
-Recall Gate is a **desktop gate** with a **local question deck**. The freeze loop, loan, bail, and MCQ on the lock surface are the center of the design.
+Recall Gate is a **desktop gate** with a **local question deck**. The freeze loop, loan, abort, and MCQ on the lock surface are the center of the design.
 
 Spaced repetition schedules when items become due. It is **not** an Anki clone. Optional **import** from external decks (for example Anki `.apkg`) may land later. Import copies rows into this domain. It does not run Anki at freeze time and does not shape v0 types.
 
@@ -48,7 +48,7 @@ There is no `New | Learning | Review | Relearning` enum in v0 core unless a PR a
 
 `Rating` is `Again`, `Hard`, `Good`, or `Easy`. There is no fifth grade.
 
-`ReviewLog` is append-only. Each entry has `ItemId`, `Rating`, timestamps, and schedule snapshots before and after the rating. A review is produced only from answering the MCQ on the gate, not from bail.
+`ReviewLog` is append-only. Each entry has `ItemId`, `Rating`, timestamps, and schedule snapshots before and after the rating. A review is produced only from answering the MCQ on the gate, not from abort.
 
 v0 MCQ mapping: wrong index → `Again`, correct index → `Good`. Other grades are for later interaction kinds.
 
@@ -68,11 +68,11 @@ At most one `Locked` phase exists. Crash with `Locked` on disk reloads as `Locke
 
 When a loan ends, the daemon starts a new `Locked` phase (new `GateId`, pick due `ItemId`).
 
-## Bail
+## Abort
 
-`Bail` records method, timestamps, and cost paid. It is a gate event.
+`Abort` records how the user escaped (chord, hold, confirm, and similar), timestamps, and cost paid. It is a gate event.
 
-A bail path cannot create a `ReviewLog`. A review path cannot record a bail method.
+An abort path cannot create a `ReviewLog`. A review path cannot record an abort.
 
 ## Due selection
 
@@ -104,6 +104,6 @@ These must not be representable in v0.
 - `Unlocked` stored as open gate state
 - `Rating` without `ItemId` and `reviewed_at`
 - Due list including a suspended item
-- `Bail` that writes `ReviewLog`
+- `Abort` that writes `ReviewLog`
 - Two concurrent `Locked` phases
 - Import or sync path that calls an external scheduler during a freeze

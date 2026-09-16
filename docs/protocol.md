@@ -74,6 +74,6 @@ Resource `recallgate://session` reads the same payload as `gate_status`.
 
 ## Lock backend process
 
-The lock binary does not open SQLite. It connects to the socket. It renders `stem` and `choices`. It sends the chosen index or a completed bail to the daemon. The daemon returns whether to call the platform unlock.
+The lock binary does not open SQLite. It connects to the socket. It renders `stem` and `choices`. It sends the chosen index or a completed abort sequence to the daemon. The daemon returns whether to call the platform unlock.
 
 Wayland unlock is `unlock_and_destroy` on the session lock object. X11 unlock is ungrab plus unmap.
