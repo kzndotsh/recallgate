@@ -1,57 +1,50 @@
 # Agent guide
 
-Recall Gate freezes the desktop until the user answers one MCQ. Agents may enqueue prompts or start a freeze. They must not unlock the session.
+Operational notes for coding agents working in this repository. Product behavior and API rules live in `docs/` and [CONTRIBUTING.md](CONTRIBUTING.md), not here.
 
-## Read first
+## Documentation map
 
 | Doc | Use when |
 | --- | --- |
-| [docs/domain.md](docs/domain.md) | Types, `GatePhase`, illegal states. Names there are canonical. |
-| [docs/protocol.md](docs/protocol.md) | Daemon RPC and MCP methods. |
-| [docs/plan.md](docs/plan.md) | PR order, crate boundaries, verification lanes. |
-| [docs/platforms.md](docs/platforms.md) | Wayland session lock vs X11 grab, compositor support. |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | PR scope and product rules. |
+| [docs/developing.md](docs/developing.md) | Toolchain, system packages, local commands, CI parity. |
+| [docs/plan.md](docs/plan.md) | PR order, crate boundaries, verification expectations. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | What belongs in a PR before you open it. |
+| [docs/domain.md](docs/domain.md) | Domain types and naming. |
+| [docs/protocol.md](docs/protocol.md) | Daemon RPC and MCP surface. |
+| [docs/platforms.md](docs/platforms.md) | Platform backends and packaging. |
 
 ## Commands
 
-Setup is in [docs/developing.md](docs/developing.md). After dependencies are installed:
-
 ```bash
-make check          # fmt, clippy -D warnings, tests (same as CI)
+make check          # fmt, clippy -D warnings, tests (matches CI)
 cargo test -p recallgate-core
 ```
 
-Optional Nix: `nix develop` then the same `cargo` / `make` commands.
+Optional Nix: `nix develop`, then the same commands.
 
-## Architecture (do not blur)
+## Workspace layout (planned)
 
-- **`recallgate-core`**: domain and scheduling. No windowing.
-- **`recallgate-daemon`**: sole SQLite writer; Unix socket JSON-RPC at `$XDG_RUNTIME_DIR/recallgate.sock`.
-- **Lock binaries** (`lock-wayland`, `lock-x11`): render UI only; talk RPC, never open the DB.
-- **`recallgate-mcp`**: stdio MCP; tools mirror RPC. No `gate_unlock`.
+| Crate / path | Role |
+| --- | --- |
+| `crates/core` | Library; domain and persistence land here per plan. |
+| `crates/daemon` | Daemon binary (not in tree until `pr-daemon`). |
+| `crates/lock-wayland`, `crates/lock-x11` | Lock clients (later PRs). |
+| `crates/mcp` | MCP adapter (later PR). |
 
-Implement in plan order: `pr-core` → `pr-store` → `pr-daemon` → (`pr-wayland` ∥ `pr-x11`) → `pr-mcp`.
-
-## Hard rules
-
-- Never add `gate_unlock` to RPC or MCP.
-- Never call AnkiConnect from the freeze path.
-- Wrong MCQ default: flash correct answer, log `Again`, then unlock (see [docs/product.md](docs/product.md)).
-- Wayland: `ext-session-lock-v1` via GTK session lock, not layer-shell overlay as the product lock.
-- GNOME/KDE Wayland: no session lock protocol; locker reports `unsupported`, daemon/MCP still work.
+Stack order is defined in [docs/plan.md](docs/plan.md). Stay inside one PR’s paths unless the plan stacks branches.
 
 ## Testing
 
-- Unit work: `cargo test` for the crate you touch.
-- Lock UI: nested Sway (Wayland) or Xephyr (X11). Do not drive the real session lock on the host without operator consent.
-- `docs/plan.md` requires live and perf evidence for merge-ready PRs, not tests alone.
+- Default gate: **`make check`** before push.
+- GUI or session-lock work: use nested compositors as described in [docs/plan.md](docs/plan.md) live lanes (nested Sway, Xephyr). Avoid locking the operator’s real session unless they ask.
+- Merge-ready criteria for implementation PRs are in the plan (unit, live, perf), not only `cargo test`.
 
 ## Cloud Agent environment
 
-There is no committed `.cursor/environment.json` yet. CI uses Ubuntu 24.04 and `make check`. Full GTK/Wayland deps are documented for lock crates; core-only work needs only the Rust toolchain.
+No committed `.cursor/environment.json` yet. GitHub Actions runs on `ubuntu-24.04` with `make check`. GTK/Wayland system libraries matter once lock crates exist; see [docs/developing.md](docs/developing.md).
 
-`docs/plan.md` references `pstack/` playbooks on `origin/main`. That tree is not in this repository unless added separately. Use [docs/plan.md](docs/plan.md) and this file for agent workflow here.
+[docs/plan.md](docs/plan.md) may reference `pstack/` paths on `origin/main`. That tree is not in this repo unless added separately.
 
-## When unsure
+## When stuck
 
-Prefer [docs/domain.md](docs/domain.md) over inventing new type names. Product behavior questions belong to the human operator, not a new RPC.
+Read the spec doc for the layer you are changing. Do not extend scope beyond the active PR in [docs/plan.md](docs/plan.md). Open a question to the operator only for gaps the specs do not cover.
