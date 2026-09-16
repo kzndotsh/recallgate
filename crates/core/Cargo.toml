@@ -1,0 +1,9 @@
+[package]
+name = "recallgate-core"
+description = "Recall Gate domain types, scheduling, and persistence"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
