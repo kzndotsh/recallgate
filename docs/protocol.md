@@ -52,6 +52,8 @@ Result.
 - `prompt_id` string
 - `card_id` string
 
+In v0 both ids are the same [item id](domain.md#wire-mapping-v0). They may diverge in a future version if presentation snapshots split from schedulable items.
+
 This method does not freeze the session.
 
 ### gate_due

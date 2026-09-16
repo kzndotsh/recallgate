@@ -1,80 +1,109 @@
 # Domain reference
 
-Names in this file are the only names for these ideas. Implementers match these symbols later in `crates/core`.
+Names in this file are the only names for these ideas in `crates/core`. Product behavior lives in [product.md](product.md). Wire shapes live in [protocol.md](protocol.md).
 
-## Identifiers
+## What drives implementation
+
+Recall Gate is a **desktop gate** with a **local question deck**. The freeze loop, loan, bail, and MCQ on the lock surface are the center of the design.
+
+Spaced repetition schedules when items become due. It is **not** an Anki clone. Optional **import** from external decks (for example Anki `.apkg`) may land later. Import copies rows into this domain. It does not run Anki at freeze time and does not shape v0 types.
+
+Do not model notes, card types, HTML templates, or a second scheduler API in core because Anki has them.
+
+## Identifiers (v0)
 
 | Type | Meaning |
 | --- | --- |
-| `CardId` | Scheduled memory unit |
-| `PromptId` | One presentation bound to a card |
-| `SessionId` | One freeze |
-| `NoteId` | Optional import identity. Never scheduled |
+| `ItemId` | One schedulable MCQ unit (stem, choices, answer index, schedule) |
+| `GateId` | One freeze episode (lock, optional loan, relock) |
 
-`CardId` and `PromptId` are not interchangeable.
+v0 uses a single id per row. [protocol.md](protocol.md) may expose both `card_id` and `prompt_id` on the wire with the **same** `ItemId` until a future version needs separate presentation snapshots.
 
-## Prompt
+## Item (v0)
 
-A `Prompt` has `PromptId`, `CardId`, `stem`, and `ResponseKind`.
+An `Item` has:
 
-`ResponseKind` is one of these variants.
+- `ItemId`
+- `stem` string
+- `choices` exactly four strings
+- `correct_index` in `0..3`
+- `schedule` (see below)
+- `suspended` boolean. Suspended items never appear in due lists.
 
-| Variant | v0 | Unlock rule |
-| --- | --- | --- |
-| `Mcq` | Yes | Four choices, one correct index 0..3. Wrong maps to `Rating::Again`. Right maps to `Rating::Good`. Then unlock |
-| `TypedRecall` | No | Later |
-| `RevealThenGrade` | No | Later. Default for raw Anki HTML if imported |
+Optional `external_ref` string for tracing import source. Opaque to scheduling. Not required for local-only decks.
+
+## Schedule (v0)
+
+Scheduling is **pluggable**. Core stores a snapshot the active algorithm needs. v0 uses a small struct, not an Anki queue enum.
+
+| Field | Role |
+| --- | --- |
+| `due_at` | When the item may be picked for a freeze |
+| `reps`, `lapses` | Counters for analytics and scheduler input |
+| `memory` | Algorithm-specific state (for example stability and difficulty if using FSRS defaults) |
+
+There is no `New | Learning | Review | Relearning` enum in v0 core unless a PR adds it with a concrete scheduler requirement. Suspended is a flag on the item, not a queue.
+
+## Rating and reviews
 
 `Rating` is `Again`, `Hard`, `Good`, or `Easy`. There is no fifth grade.
 
-## Card and memory
+`ReviewLog` is append-only. Each entry has `ItemId`, `Rating`, timestamps, and schedule snapshots before and after the rating. A review is produced only from answering the MCQ on the gate, not from bail.
 
-A `Card` has `CardId`, optional `NoteId`, `queue`, `MemoryState`, `due`, `reps`, `lapses`.
+v0 MCQ mapping: wrong index → `Again`, correct index → `Good`. Other grades are for later interaction kinds.
 
-`queue` is `New`, `Learning`, `Review`, or `Relearning`. Suspended and buried are not queues that can appear as a lock prompt. Those cards are absent from due lists.
+## Gate (freeze episode)
 
-`MemoryState` is FSRS `stability` and `difficulty` plus last review time. SM-2 ease is a different object. Do not store both on one card.
-
-`ReviewLog` is append-only. Fields are `CardId`, `PromptId`, `Rating`, elapsed, timestamps, pre state, post state.
-
-## Gate session
-
-`GatePhase` is a sum type.
+`GatePhase` is a sum type. Only these variants may be persisted as open state.
 
 | Variant | Payload |
 | --- | --- |
 | `Idle` | None |
-| `Locked` | `SessionId`, `PromptId`, started at |
-| `Loan` | `SessionId`, until |
-| `Unlocked` | Terminal. Do not persist as open |
+| `Locked` | `GateId`, `ItemId`, `started_at` |
+| `Loan` | `GateId`, `until` |
 
-At most one `Locked` row exists.
+`Unlocked` is a **transition outcome**, not a row stored as open state.
 
-Crash with `Locked` on disk reloads as `Locked` and the lock backend must freeze again.
+At most one `Locked` phase exists. Crash with `Locked` on disk reloads as `Locked` and the lock backend must freeze again.
+
+When a loan ends, the daemon starts a new `Locked` phase (new `GateId`, pick due `ItemId`).
 
 ## Bail
 
-`Bail` has method, timestamps, and cost paid. It is a session event.
+`Bail` records method, timestamps, and cost paid. It is a gate event.
 
-A `Bail` constructor does not accept a `Rating`. A `ReviewLog` constructor does not accept a bail method.
+A bail path cannot create a `ReviewLog`. A review path cannot record a bail method.
 
-Loan after bail is `GatePhase::Loan`. When `until` passes, the daemon starts a new `Locked` with a new `PromptId`.
+## Due selection
 
-## Sources
+`due_items()` returns `ItemId`s that are not suspended and have `due_at` in the past (or are new, per scheduler rules). The daemon picks one when `gate_lock` omits an item.
 
-A source yields `Prompt` values. v0 source is a local table of MCQ rows.
+v0 source: local table of items. Agents may append rows via `gate_push_prompt`.
 
-Anki `.apkg` is a later importer. It copies fields into `Prompt`. It does not call AnkiConnect `answerCards` from a freeze.
+## Wire mapping (v0)
+
+| Domain | JSON-RPC (see protocol) |
+| --- | --- |
+| `ItemId` | `card_id` and `prompt_id` (same value) |
+| `GateId` | `session_id` |
+| MCQ on lock | `stem` + `choices` (no `correct_index` in the lock payload) |
+
+## Later (not v0 core)
+
+These are explicitly out of scope until a dedicated PR defines them.
+
+- Separate `PromptId` for immutable snapshots when item text changes but history must point at old wording.
+- `TypedRecall`, reveal-then-grade, or HTML-bearing prompts.
+- Anki `.apkg` import mapping into `Item` + `external_ref`.
+- Dual sync with any external study app while the daemon is the writer.
 
 ## Illegal combinations
 
-These must not be representable.
+These must not be representable in v0.
 
-- `Unlocked` stored as an open session
-- `AwaitingGrade` together with `ResponseKind::Mcq` in v0
-- `Rating` without `PromptId` and `reviewed_at`
-- `MemoryState` on a note
-- Due prompt with suspended or buried origin
+- `Unlocked` stored as open gate state
+- `Rating` without `ItemId` and `reviewed_at`
+- Due list including a suspended item
 - `Bail` that writes `ReviewLog`
-- Two `Locked` rows
-- Local FSRS write and AnkiConnect `answerCards` both marked synced without a single-writer token
+- Two concurrent `Locked` phases
+- Import or sync path that calls an external scheduler during a freeze

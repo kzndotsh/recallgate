@@ -81,8 +81,8 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 **Build.**
 
-- [ ] Add newtypes `CardId`, `PromptId`, `SessionId` in `crates/core/src/ids.rs`.
-- [ ] Add `Prompt`, `ResponseKind`, `Rating`, `GatePhase`, `Bail`, `ReviewLog` so a bail cannot construct a `ReviewLog`.
+- [ ] Add newtypes `ItemId`, `GateId` in `crates/core/src/ids.rs`.
+- [ ] Add `Item`, `Schedule`, `Rating`, `GatePhase`, `Bail`, `ReviewLog` per [domain.md](domain.md). A bail cannot construct a `ReviewLog`.
 
 **You see.**
 
@@ -133,11 +133,11 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 **Build.**
 
-- [ ] Add SQLite persistence for `Card`, `Prompt`, `MemoryState`, `GateSession`, `Bail`, and `ReviewLog` in `crates/core/src/store.rs`. Crash with `Locked` still on disk must reload as `Locked`.
+- [ ] Add SQLite persistence for `Item`, schedule snapshots, `GatePhase`, `Bail`, and `ReviewLog` in `crates/core/src/store.rs`. Crash with `Locked` still on disk must reload as `Locked`.
 
 **You see.**
 
-- [ ] `cargo test -p recallgate-core store_roundtrip` prints `test result: ok` and a second process reads the same `SessionId`.
+- [ ] `cargo test -p recallgate-core store_roundtrip` prints `test result: ok` and a second process reads the same `GateId`.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -151,7 +151,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 - [ ] Lane 4. Two `Locked` inserts in one file fail. Save `pr-store-lane-4.png`. Pass when the second insert returns `Err`.
 - [ ] Lane 5. Import a fixture JSON prompt and list it as due. Save `pr-store-lane-5.png`. Pass when due count is 1.
 - [ ] Lane 6. Suspended card is absent from due. Save `pr-store-lane-6.png`. Pass when due count is 0 for that card.
-- [ ] Lane 7. FSRS `MemoryState` roundtrips `stability` and `difficulty` bits. Save `pr-store-lane-7.png`. Pass when equality holds.
+- [ ] Lane 7. Scheduler `memory` snapshot roundtrips without loss (for example stability and difficulty if using FSRS defaults). Save `pr-store-lane-7.png`. Pass when equality holds.
 - [ ] Lane 8. `clippy -D warnings` on `crates/core`. Save `pr-store-lane-8.png`. Pass when clippy exits 0.
 - [ ] Lane 9. Corrupt the db header and open. Save `pr-store-lane-9.png`. Pass when open returns a typed error, not a panic.
 - [ ] Lane 10. Concurrent writers are not in this crate. Document single-writer in the test name `store_is_single_writer`. Save `pr-store-lane-10.png`. Pass when that test exists and passes.
