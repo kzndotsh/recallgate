@@ -250,14 +250,14 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 - [ ] Lane 1. Regression lane against trunk. Run the nested Sway lock at trunk and head. If trunk has no locker, record that and gate that the lock surface appears and a correct key restores the nested desktop. Save `pr-wayland-lane-1.png`. Pass when the nested desktop is visible after unlock.
 - [ ] Lane 2. Wrong key flashes the answer then unlocks. Save `pr-wayland-lane-2.png`. Pass when the session is usable and `ReviewLog` has `Again`.
-- [ ] Lane 3. Hatch chord plus hold plus typed confirm starts a loan. Save `pr-wayland-lane-3.png`. Pass when `gate_status` is `loan` and no `ReviewLog` row was added.
+- [ ] Lane 3. Hatch chord plus hold plus typed confirm starts a cooldown. Save `pr-wayland-lane-3.png`. Pass when `gate_status` is `cooldown` and no `ReviewLog` row was added.
 - [ ] Lane 4. Two outputs get two lock surfaces. Save `pr-wayland-lane-4.png`. Pass when both screenshots show the same stem.
 - [ ] Lane 5. Kill the lock client after `locked`. Save `pr-wayland-lane-5.png`. Pass when the nested compositor stays blank until a second lock client attaches.
 - [ ] Lane 6. Overlay-only GTK window without session lock is not this binary. Save `pr-wayland-lane-6.png`. Pass when `WAYLAND_DISPLAY` nested compositor `protocol` log contains `ext_session_lock`.
 - [ ] Lane 7. `Escape` and `Alt+F4` do not unlock. Save `pr-wayland-lane-7.png`. Pass when phase stays `locked`.
 - [ ] Lane 8. `clippy -D warnings`. Save `pr-wayland-lane-8.png`. Pass when clippy exits 0.
 - [ ] Lane 9. Mutter or a compositor without the protocol. Save `pr-wayland-lane-9.png`. Pass when the binary exits with `unsupported` and does not grab input.
-- [ ] Lane 10. Loan timer expires and relocks. Save `pr-wayland-lane-10.png`. Pass when a second lock surface appears without a new `gate_lock` from the user.
+- [ ] Lane 10. Cooldown timer expires and relocks. Save `pr-wayland-lane-10.png`. Pass when a second lock surface appears without a new `gate_lock` from the user.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -305,7 +305,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 - [ ] Lane 1. Regression lane against trunk. Run the Xephyr grab at trunk and head. If trunk has no X11 locker, record that and gate that a correct key restores Xephyr input. Save `pr-x11-lane-1.png`. Pass when `xdotool` can type into a nested xterm after unlock.
 - [ ] Lane 2. Wrong key then unlock with `Again` logged. Save `pr-x11-lane-2.png`. Pass when `ReviewLog` has `Again`.
-- [ ] Lane 3. Hatch produces `loan` with no review row. Save `pr-x11-lane-3.png`. Pass when `gate_status` is `loan`.
+- [ ] Lane 3. Hatch produces `cooldown` with no review row. Save `pr-x11-lane-3.png`. Pass when `gate_status` is `cooldown`.
 - [ ] Lane 4. Kill the locker while grabbed. Save `pr-x11-lane-4.png`. Pass when Xephyr accepts keys again without a second client.
 - [ ] Lane 5. Compositor in Xephyr. Save `pr-x11-lane-5.png`. Pass when the quiz still receives keys with picom running.
 - [ ] Lane 6. Grab already held by a nested menu. Save `pr-x11-lane-6.png`. Pass when the binary reports `grab_busy` and does not claim `session_lock`.
@@ -394,7 +394,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 No prototype branch or SHA exists. The operator forbade coding in this pass.
 
-Unproven. Nested Sway `ext-session-lock-v1` with GTK4 `gtk4-session-lock` on this machine. Xephyr plus picom grab covering. Loan timer versus compositor idle. Hatch chord versus IME. Crash restore on Sway without a `--locked` bind. MCP stdio with a live OpenClaw or Hermes client.
+Unproven. Nested Sway `ext-session-lock-v1` with GTK4 `gtk4-session-lock` on this machine. Xephyr plus picom grab covering. Cooldown timer versus compositor idle. Hatch chord versus IME. Crash restore on Sway without a `--locked` bind. MCP stdio with a live OpenClaw or Hermes client.
 
 Product calls that still need the operator. Whether a wrong MCQ unlocks after the flash. Whether Windows and macOS backends enter the stack after `pr-mcp`. Whether HTTP MCP is wanted for SillyTavern in a later PR.
 

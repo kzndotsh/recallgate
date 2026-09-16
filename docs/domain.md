@@ -4,7 +4,7 @@ Names in this file are the only names for these ideas in `crates/core`. Product 
 
 ## What drives implementation
 
-Recall Gate is a **desktop gate** with a **local question deck**. The freeze loop, loan, abort, and MCQ on the lock surface are the center of the design.
+Recall Gate is a **desktop gate** with a **local question deck**. The freeze loop, cooldown, abort, and MCQ on the lock surface are the center of the design.
 
 Spaced repetition schedules when items become due. It is **not** an Anki clone. Optional **import** from external decks (for example Anki `.apkg`) may land later. Import copies rows into this domain. It does not run Anki at freeze time and does not shape v0 types.
 
@@ -15,7 +15,7 @@ Do not model notes, card types, HTML templates, or a second scheduler API in cor
 | Type | Meaning |
 | --- | --- |
 | `ItemId` | One schedulable MCQ unit (stem, choices, answer index, schedule) |
-| `GateId` | One freeze episode (lock, optional loan, relock) |
+| `GateId` | One freeze episode (lock, optional cooldown, relock) |
 
 v0 uses a single id per row. [protocol.md](protocol.md) may expose both `card_id` and `prompt_id` on the wire with the **same** `ItemId` until a future version needs separate presentation snapshots.
 
@@ -60,13 +60,13 @@ v0 MCQ mapping: wrong index → `Again`, correct index → `Good`. Other grades 
 | --- | --- |
 | `Idle` | None |
 | `Locked` | `GateId`, `ItemId`, `started_at` |
-| `Loan` | `GateId`, `until` |
+| `Cooldown` | `GateId`, `until` |
 
 `Unlocked` is a **transition outcome**, not a row stored as open state.
 
 At most one `Locked` phase exists. Crash with `Locked` on disk reloads as `Locked` and the lock backend must freeze again.
 
-When a loan ends, the daemon starts a new `Locked` phase (new `GateId`, pick due `ItemId`).
+When a cooldown ends, the daemon starts a new `Locked` phase (new `GateId`, pick due `ItemId`).
 
 ## Abort
 

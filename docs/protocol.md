@@ -33,10 +33,10 @@ Errors.
 
 Result.
 
-- `phase` string. `idle`, `locked`, or `loan`
+- `phase` string. `idle`, `locked`, or `cooldown`
 - `capability` string. `session_lock`, `x11_grab`, or `none`
 - `session_id` string or null
-- `loan_until` RFC3339 string or null
+- `cooldown_until` RFC3339 string or null
 
 ### gate_push_prompt
 
