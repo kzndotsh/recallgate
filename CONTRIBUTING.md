@@ -2,6 +2,8 @@
 
 Thanks for helping build Recall Gate. Setup lives in [docs/developing.md](docs/developing.md). This file covers how we work in the repo.
 
+**Design center:** the desktop gate and local MCQ deck. Optional deck import (for example Anki) is a side path. Do not shape core types, stores, or RPC around Anki’s note or card model unless a spec PR says so. See [docs/domain.md](domain.md#what-drives-implementation).
+
 ## Before you open a PR
 
 1. Install the toolchain and dependencies per [docs/developing.md](docs/developing.md).

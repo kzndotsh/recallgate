@@ -6,9 +6,9 @@ The loop is a tax on continuing, not a quota to clear. Phone apps that block Ins
 
 ## What the user meets
 
-A freeze covers every monitor. One stem. Four keys. A correct answer unlocks. A wrong answer shows the right choice, stores Again, and still unlocks. Piling more cards after a miss makes abort the rational move.
+A freeze covers every monitor. One stem. Four keys. A correct answer unlocks. A wrong answer shows the right choice, logs an incorrect answer (Again-style in the UI copy), and still unlocks. Piling more cards after a miss makes abort the rational move.
 
-Abort exists and costs more than the card. An obscure chord, a hold, a typed confirm, then about a minute of use, then the freeze returns. There is no Skip control. There is no tray Unlock.
+Abort exists and costs more than the card. An obscure chord, a hold, a typed confirm, then a cooldown (about a minute of use), then the freeze returns. There is no Skip control. There is no tray Unlock.
 
 ## What the product refuses
 
@@ -22,7 +22,7 @@ It will not claim X11 is as strong as Wayland session lock. X11 has no lock obje
 
 ## Why the core is separate
 
-Cards, ratings, bail, and the freeze phase live in a library with no windowing. Wayland, X11, and later Windows or macOS are drivers. MCP is another client of the same daemon. That split is how you move machines without rewriting memory.
+Cards, ratings, abort, and the freeze phase live in a library with no windowing. Wayland, X11, and later Windows or macOS are drivers. MCP is another client of the same daemon. That split is how you move machines without rewriting memory.
 
 ## Wrong-answer policy
 

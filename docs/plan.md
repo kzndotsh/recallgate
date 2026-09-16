@@ -1,6 +1,6 @@
 # Recall Gate plan
 
-Recall Gate taxes continuing a desktop session with one multiple-choice card. The operator and later owners run this checklist. A freeze ends only by a rating or a paid bail. Stack order is `pr-core`, `pr-store`, `pr-daemon`, then `pr-wayland` and `pr-x11` in parallel, then `pr-mcp`.
+Recall Gate taxes continuing a desktop session with one multiple-choice card. The operator and later owners run this checklist. A freeze ends only by a rating or a paid abort. Stack order is `pr-core`, `pr-store`, `pr-daemon`, then `pr-wayland` and `pr-x11` in parallel, then `pr-mcp`.
 
 ## How to read this
 
@@ -73,16 +73,16 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 - [ ] Create `crates/core/Cargo.toml`.
 - [ ] Create `crates/core/src/lib.rs`.
 - [ ] Create `crates/core/src/ids.rs`.
-- [ ] Create `crates/core/src/prompt.rs`.
-- [ ] Create `crates/core/src/session.rs`.
-- [ ] Create `crates/core/src/schedule.rs`.
+- [ ] Create `crates/core/src/item.rs`.
+- [ ] Create `crates/core/src/gate.rs`.
+- [ ] Create `crates/core/src/cadence.rs`.
 - [ ] Create `flake.nix`.
 - [ ] Create `.gitignore`.
 
 **Build.**
 
-- [ ] Add newtypes `CardId`, `PromptId`, `SessionId` in `crates/core/src/ids.rs`.
-- [ ] Add `Prompt`, `ResponseKind`, `Rating`, `GatePhase`, `Bail`, `ReviewLog` so a bail cannot construct a `ReviewLog`.
+- [ ] Add newtypes `ItemId`, `GateId` in `crates/core/src/ids.rs`.
+- [ ] Add `Item`, `GateCadence`, `GatePhase`, `Abort`, `Answer` per [domain.md](domain.md). An abort cannot construct an `Answer`.
 
 **You see.**
 
@@ -90,18 +90,18 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `crates/core/src/session.rs` rejects `Unlocked` with an open session. Run `cargo test -p recallgate-core session`.
+- [ ] `crates/core/src/gate.rs` rejects persisting `Unlocked` as open state. Run `cargo test -p recallgate-core gate`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `grok-4.6-fast-xhigh` at the PR head, per the boot recipe.
 
 - [ ] Lane 1. Regression lane against trunk. Run `cargo test -p recallgate-core` at trunk and head. If trunk lacks the crate, record that and gate that the new tests pass and the process prints `test result: ok`. Save `pr-core-lane-1.png`. Pass when head stdout contains `test result: ok`.
 - [ ] Lane 2. Compile with `cargo test -p recallgate-core --offline` after `cargo fetch`. Save `pr-core-lane-2.png`. Pass when the command exits 0.
 - [ ] Lane 3. `clippy` on `crates/core` with `-D warnings`. Save `pr-core-lane-3.png`. Pass when clippy exits 0.
-- [ ] Lane 4. Construct an `Mcq` prompt and map a wrong index to `Rating::Again`. Save `pr-core-lane-4.png`. Pass when that test name is in stdout.
-- [ ] Lane 5. Construct a correct index mapped to `Rating::Good`. Save `pr-core-lane-5.png`. Pass when that test name is in stdout.
+- [ ] Lane 4. Wrong MCQ index produces an `Answer` with `correct: false`. Save `pr-core-lane-4.png`. Pass when that test name is in stdout.
+- [ ] Lane 5. Correct MCQ index produces an `Answer` with `correct: true`. Save `pr-core-lane-5.png`. Pass when that test name is in stdout.
 - [ ] Lane 6. Attempt `GatePhase::Idle` while a session id is still held. Save `pr-core-lane-6.png`. Pass when the test asserts the constructor returns `Err`.
-- [ ] Lane 7. `Bail` type has no `ReviewLog` field. Save `pr-core-lane-7.png`. Pass when `cargo test` covers `bail_is_not_a_review`.
-- [ ] Lane 8. Suspended queue cannot become a lock prompt. Save `pr-core-lane-8.png`. Pass when `due_excludes_suspended` passes.
+- [ ] Lane 7. `Abort` type has no `Answer` field. Save `pr-core-lane-7.png`. Pass when `cargo test` covers `abort_is_not_an_answer`.
+- [ ] Lane 8. `pick_item` never returns a suspended `ItemId`. Save `pr-core-lane-8.png`. Pass when `pick_item_excludes_suspended` passes.
 - [ ] Lane 9. `make check` on the Ubuntu CI-equivalent image (see `.github/workflows/ci.yml`), or `nix build .#recallgate-core` when using Nix. Save `pr-core-lane-9.png`. Pass when the chosen command exits 0.
 - [ ] Lane 10. `cargo fmt --check`. Save `pr-core-lane-10.png`. Pass when rustfmt reports no diffs.
 
@@ -133,11 +133,11 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 **Build.**
 
-- [ ] Add SQLite persistence for `Card`, `Prompt`, `MemoryState`, `GateSession`, `Bail`, and `ReviewLog` in `crates/core/src/store.rs`. Crash with `Locked` still on disk must reload as `Locked`.
+- [ ] Add SQLite persistence for `Item`, `GateCadence`, `GatePhase`, `Abort`, and `Answer` in `crates/core/src/store.rs`. Crash with `Locked` still on disk must reload as `Locked`.
 
 **You see.**
 
-- [ ] `cargo test -p recallgate-core store_roundtrip` prints `test result: ok` and a second process reads the same `SessionId`.
+- [ ] `cargo test -p recallgate-core store_roundtrip` prints `test result: ok` and a second process reads the same `GateId`.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -147,21 +147,21 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 - [ ] Lane 1. Regression lane against trunk. Run `cargo test -p recallgate-core` at trunk and head. If trunk lacks persistence, record that and gate reload of a locked row plus `test result: ok`. Save `pr-store-lane-1.png`. Pass when head includes `store_roundtrip` ok.
 - [ ] Lane 2. Kill the test process after `begin_lock` then reopen. Save `pr-store-lane-2.png`. Pass when the reopened phase is `Locked`.
-- [ ] Lane 3. Write a `Bail` row and assert `ReviewLog` count is unchanged. Save `pr-store-lane-3.png`. Pass when that assertion is in the test stdout.
+- [ ] Lane 3. Write an `Abort` row and assert `Answer` count is unchanged. Save `pr-store-lane-3.png`. Pass when that assertion is in the test stdout.
 - [ ] Lane 4. Two `Locked` inserts in one file fail. Save `pr-store-lane-4.png`. Pass when the second insert returns `Err`.
-- [ ] Lane 5. Import a fixture JSON prompt and list it as due. Save `pr-store-lane-5.png`. Pass when due count is 1.
-- [ ] Lane 6. Suspended card is absent from due. Save `pr-store-lane-6.png`. Pass when due count is 0 for that card.
-- [ ] Lane 7. FSRS `MemoryState` roundtrips `stability` and `difficulty` bits. Save `pr-store-lane-7.png`. Pass when equality holds.
+- [ ] Lane 5. Insert a fixture `Item` and list it via `deck_items`. Save `pr-store-lane-5.png`. Pass when deck length is 1.
+- [ ] Lane 6. Suspended item is absent from `deck_items`. Save `pr-store-lane-6.png`. Pass when deck length is 0 for that item.
+- [ ] Lane 7. `GateCadence.lock_interval` roundtrips through the store. Save `pr-store-lane-7.png`. Pass when equality holds.
 - [ ] Lane 8. `clippy -D warnings` on `crates/core`. Save `pr-store-lane-8.png`. Pass when clippy exits 0.
 - [ ] Lane 9. Corrupt the db header and open. Save `pr-store-lane-9.png`. Pass when open returns a typed error, not a panic.
 - [ ] Lane 10. Concurrent writers are not in this crate. Document single-writer in the test name `store_is_single_writer`. Save `pr-store-lane-10.png`. Pass when that test exists and passes.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. Time to insert 1000 prompts and read due at trunk and head. If trunk lacks store, also time that insert loop and the wait until due returns 1000.
+- [ ] Metric. Time to insert 1000 items and read `deck_items` at trunk and head. If trunk lacks store, also time that insert loop and the wait until deck length is 1000.
 - [ ] Probe. `cargo test -p recallgate-core persist_1000 -- --nocapture` at trunk and head, interleaved.
 - [ ] Baseline. Record trunk milliseconds first, or `absent`.
-- [ ] Rule. Head insert of 1000 prompts plus due read must finish in under 500 ms. Fail at 500 ms or above.
+- [ ] Rule. Head insert of 1000 items plus `deck_items` read must finish in under 500 ms. Fail at 500 ms or above.
 
 **Review gate.** None. pr-store is not review-gated.
 
@@ -200,7 +200,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 - [ ] Lane 1. Regression lane against trunk. Run a status RPC at trunk and head. If trunk has no daemon, record that and gate that `gate_status` returns idle and the process stays up. Save `pr-daemon-lane-1.png`. Pass when the JSON `phase` is `idle`.
 - [ ] Lane 2. Call `gate_lock` with a fixture prompt without a lock backend. Save `pr-daemon-lane-2.png`. Pass when the error name is `no_lock_backend` and phase stays idle.
 - [ ] Lane 3. Call `gate_unlock`. Save `pr-daemon-lane-3.png`. Pass when the response is method-not-found.
-- [ ] Lane 4. `gate_push_prompt` then `gate_due`. Save `pr-daemon-lane-4.png`. Pass when due length is 1.
+- [ ] Lane 4. `gate_push_prompt` then `gate_due`. Save `pr-daemon-lane-4.png`. Pass when `prompt_ids` length is 1.
 - [ ] Lane 5. Second daemon on the same socket fails. Save `pr-daemon-lane-5.png`. Pass when the second process exits nonzero.
 - [ ] Lane 6. SIGTERM leaves the db closed cleanly. Save `pr-daemon-lane-6.png`. Pass when reopen works.
 - [ ] Lane 7. Malformed JSON line. Save `pr-daemon-lane-7.png`. Pass when the next well-formed call still works.
@@ -236,11 +236,11 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 **Build.**
 
-- [ ] Add `ext-session-lock-v1` via `gtk4-session-lock` in `crates/lock-wayland/src/lock.rs`. One window per output. Unlock only after `core` returns a rating or a completed `Bail`.
+- [ ] Add `ext-session-lock-v1` via `gtk4-session-lock` in `crates/lock-wayland/src/lock.rs`. One window per output. Unlock only after `core` records an `Answer` or a completed `Abort`.
 
 **You see.**
 
-- [ ] Nested Sway shows one MCQ and ignores other clients until a choice key. After Good, the nested session is usable.
+- [ ] Nested Sway shows one MCQ and ignores other clients until a choice key. After a correct answer, the nested session is usable.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -249,15 +249,15 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `grok-4.6-fast-xhigh` at the PR head, per the boot recipe.
 
 - [ ] Lane 1. Regression lane against trunk. Run the nested Sway lock at trunk and head. If trunk has no locker, record that and gate that the lock surface appears and a correct key restores the nested desktop. Save `pr-wayland-lane-1.png`. Pass when the nested desktop is visible after unlock.
-- [ ] Lane 2. Wrong key flashes the answer then unlocks. Save `pr-wayland-lane-2.png`. Pass when the session is usable and `ReviewLog` has `Again`.
-- [ ] Lane 3. Hatch chord plus hold plus typed confirm starts a loan. Save `pr-wayland-lane-3.png`. Pass when `gate_status` is `loan` and no `ReviewLog` row was added.
+- [ ] Lane 2. Wrong key flashes the answer then unlocks. Save `pr-wayland-lane-2.png`. Pass when the session is usable and an `Answer` row has `correct: false`.
+- [ ] Lane 3. Hatch chord plus hold plus typed confirm starts a cooldown. Save `pr-wayland-lane-3.png`. Pass when `gate_status` is `cooldown` and no `Answer` row was added.
 - [ ] Lane 4. Two outputs get two lock surfaces. Save `pr-wayland-lane-4.png`. Pass when both screenshots show the same stem.
 - [ ] Lane 5. Kill the lock client after `locked`. Save `pr-wayland-lane-5.png`. Pass when the nested compositor stays blank until a second lock client attaches.
 - [ ] Lane 6. Overlay-only GTK window without session lock is not this binary. Save `pr-wayland-lane-6.png`. Pass when `WAYLAND_DISPLAY` nested compositor `protocol` log contains `ext_session_lock`.
 - [ ] Lane 7. `Escape` and `Alt+F4` do not unlock. Save `pr-wayland-lane-7.png`. Pass when phase stays `locked`.
 - [ ] Lane 8. `clippy -D warnings`. Save `pr-wayland-lane-8.png`. Pass when clippy exits 0.
 - [ ] Lane 9. Mutter or a compositor without the protocol. Save `pr-wayland-lane-9.png`. Pass when the binary exits with `unsupported` and does not grab input.
-- [ ] Lane 10. Loan timer expires and relocks. Save `pr-wayland-lane-10.png`. Pass when a second lock surface appears without a new `gate_lock` from the user.
+- [ ] Lane 10. Cooldown timer expires and relocks. Save `pr-wayland-lane-10.png`. Pass when a second lock surface appears without a new `gate_lock` from the user.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -304,8 +304,8 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `grok-4.6-fast-xhigh` at the PR head, per the boot recipe.
 
 - [ ] Lane 1. Regression lane against trunk. Run the Xephyr grab at trunk and head. If trunk has no X11 locker, record that and gate that a correct key restores Xephyr input. Save `pr-x11-lane-1.png`. Pass when `xdotool` can type into a nested xterm after unlock.
-- [ ] Lane 2. Wrong key then unlock with `Again` logged. Save `pr-x11-lane-2.png`. Pass when `ReviewLog` has `Again`.
-- [ ] Lane 3. Hatch produces `loan` with no review row. Save `pr-x11-lane-3.png`. Pass when `gate_status` is `loan`.
+- [ ] Lane 2. Wrong key then unlock with `Answer` logged (`correct: false`). Save `pr-x11-lane-2.png`. Pass when store has that row.
+- [ ] Lane 3. Hatch produces `cooldown` with no `Answer` row. Save `pr-x11-lane-3.png`. Pass when `gate_status` is `cooldown`.
 - [ ] Lane 4. Kill the locker while grabbed. Save `pr-x11-lane-4.png`. Pass when Xephyr accepts keys again without a second client.
 - [ ] Lane 5. Compositor in Xephyr. Save `pr-x11-lane-5.png`. Pass when the quiz still receives keys with picom running.
 - [ ] Lane 6. Grab already held by a nested menu. Save `pr-x11-lane-6.png`. Pass when the binary reports `grab_busy` and does not claim `session_lock`.
@@ -359,7 +359,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `grok-4.6-fast-xhigh` at the PR head, per the boot recipe.
 
 - [ ] Lane 1. Regression lane against trunk. Run `tools/list` at trunk and head. If trunk has no MCP binary, record that and gate that four tools list and `gate_status` returns JSON. Save `pr-mcp-lane-1.png`. Pass when `tools/list` names `gate_lock`.
-- [ ] Lane 2. `gate_push_prompt` through MCP then `gate_due`. Save `pr-mcp-lane-2.png`. Pass when due length is 1.
+- [ ] Lane 2. `gate_push_prompt` through MCP then `gate_due`. Save `pr-mcp-lane-2.png`. Pass when `prompt_ids` length is 1.
 - [ ] Lane 3. Call a tool named `gate_unlock`. Save `pr-mcp-lane-3.png`. Pass when MCP returns unknown tool.
 - [ ] Lane 4. Daemon down. Save `pr-mcp-lane-4.png`. Pass when the tool result is a structured error, not a hang past 2 seconds.
 - [ ] Lane 5. Logs go to stderr only. Save `pr-mcp-lane-5.png`. Pass when stdout is JSON-RPC lines only.
@@ -394,7 +394,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 No prototype branch or SHA exists. The operator forbade coding in this pass.
 
-Unproven. Nested Sway `ext-session-lock-v1` with GTK4 `gtk4-session-lock` on this machine. Xephyr plus picom grab covering. Loan timer versus compositor idle. Hatch chord versus IME. Crash restore on Sway without a `--locked` bind. MCP stdio with a live OpenClaw or Hermes client.
+Unproven. Nested Sway `ext-session-lock-v1` with GTK4 `gtk4-session-lock` on this machine. Xephyr plus picom grab covering. Cooldown timer versus compositor idle. Hatch chord versus IME. Crash restore on Sway without a `--locked` bind. MCP stdio with a live OpenClaw or Hermes client.
 
 Product calls that still need the operator. Whether a wrong MCQ unlocks after the flash. Whether Windows and macOS backends enter the stack after `pr-mcp`. Whether HTTP MCP is wanted for SillyTavern in a later PR.
 

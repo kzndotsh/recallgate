@@ -4,7 +4,9 @@ Freeze the desktop until you answer one multiple-choice card.
 
 Wrong answers still unlock after the correct choice flashes. Abort exists and costs more than answering. Agents can enqueue cards or start a freeze. They cannot unlock.
 
-The workspace currently contains specs plus a minimal `recallgate-core` crate. Domain types and lock binaries follow [docs/plan.md](docs/plan.md).
+Recall Gate is gate-first: a local MCQ deck and scheduling support the freeze, not the other way around. Optional import from external decks is a later feature.
+
+The workspace contains specs plus a minimal `recallgate-core` crate. Implementation follows [docs/plan.md](docs/plan.md) and [docs/domain.md](docs/domain.md).
 
 ## Developing
 
