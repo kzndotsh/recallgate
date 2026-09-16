@@ -5,3 +5,12 @@ members = ["crates/core"]
 [workspace.package]
 edition = "2021"
 version = "0.0.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/kzndotsh/recallgate"
+rust-version = "1.83"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"

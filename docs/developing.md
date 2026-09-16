@@ -85,6 +85,7 @@ The flake `devShell` installs the same libraries as the table above. Use it when
 
 ## Related docs
 
+- [Contributing](../CONTRIBUTING.md)
 - [Domain types](domain.md)
 - [Implementation plan](plan.md)
 - [Platforms](platforms.md)
