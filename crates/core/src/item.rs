@@ -84,17 +84,6 @@ impl Item {
     }
 }
 
-impl Answer {
-    pub fn new(
-        item_id: ItemId,
-        chosen_index: ChoiceIndex,
-        correct: bool,
-        answered_at: DateTime<Utc>,
-    ) -> Self {
-        Self { item_id, chosen_index, correct, answered_at }
-    }
-}
-
 impl Deck {
     pub fn new(items: Vec<Item>) -> Self {
         Self { items }

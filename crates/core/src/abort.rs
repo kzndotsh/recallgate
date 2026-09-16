@@ -24,14 +24,21 @@ impl Abort {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ids::{GateId, ItemId};
-    use crate::item::{Answer, ChoiceIndex};
+    use crate::ids::GateId;
+    use crate::item::{Answer, ChoiceIndex, Item, McqChoices};
 
     #[test]
     fn abort_is_not_an_answer() {
         let abort = Abort::new(GateId::new(), "chord", Utc::now(), 1);
-        let answer =
-            Answer::new(ItemId::new(), ChoiceIndex::try_new(0).expect("index"), true, Utc::now());
+        let item = Item::new(
+            crate::ids::ItemId::new(),
+            "stem",
+            McqChoices::new(["a".into(), "b".into(), "c".into(), "d".into()]),
+            ChoiceIndex::try_new(2).expect("index"),
+            false,
+            None,
+        );
+        let answer = item.answer_for_choice(ChoiceIndex::try_new(0).expect("index"), Utc::now());
         let _abort_only: Abort = abort;
         let _answer_only: Answer = answer;
     }

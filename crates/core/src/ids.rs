@@ -3,6 +3,40 @@ use std::str::FromStr;
 
 use uuid::Uuid;
 
+const UUID_VERSION_RANDOM: usize = 4;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdError {
+    NotVersion4,
+    Parse(uuid::Error),
+}
+
+impl fmt::Display for IdError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotVersion4 => write!(f, "identifier must be a UUID version 4"),
+            Self::Parse(err) => err.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for IdError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::NotVersion4 => None,
+            Self::Parse(err) => Some(err),
+        }
+    }
+}
+
+fn validate_v4(uuid: Uuid) -> Result<Uuid, IdError> {
+    if uuid.get_version_num() == UUID_VERSION_RANDOM {
+        Ok(uuid)
+    } else {
+        Err(IdError::NotVersion4)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ItemId(Uuid);
 
@@ -26,8 +60,8 @@ impl ItemId {
         Self::default()
     }
 
-    pub fn from_uuid(uuid: Uuid) -> Self {
-        Self(uuid)
+    pub fn from_uuid(uuid: Uuid) -> Result<Self, IdError> {
+        Ok(Self(validate_v4(uuid)?))
     }
 
     pub fn as_uuid(&self) -> &Uuid {
@@ -40,8 +74,8 @@ impl GateId {
         Self::default()
     }
 
-    pub fn from_uuid(uuid: Uuid) -> Self {
-        Self(uuid)
+    pub fn from_uuid(uuid: Uuid) -> Result<Self, IdError> {
+        Ok(Self(validate_v4(uuid)?))
     }
 
     pub fn as_uuid(&self) -> &Uuid {
@@ -62,17 +96,39 @@ impl fmt::Display for GateId {
 }
 
 impl FromStr for ItemId {
-    type Err = uuid::Error;
+    type Err = IdError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(Uuid::parse_str(s)?))
+        let uuid = Uuid::parse_str(s).map_err(IdError::Parse)?;
+        Self::from_uuid(uuid)
     }
 }
 
 impl FromStr for GateId {
-    type Err = uuid::Error;
+    type Err = IdError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(Uuid::parse_str(s)?))
+        let uuid = Uuid::parse_str(s).map_err(IdError::Parse)?;
+        Self::from_uuid(uuid)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_str_accepts_uuid_v4() {
+        let id = ItemId::new();
+        let parsed = ItemId::from_str(&id.to_string()).expect("parse");
+        assert_eq!(parsed, id);
+    }
+
+    #[test]
+    fn from_str_rejects_non_v4() {
+        // UUID v3 (MD5)
+        let v3 = "6fa459ea-ee8a-3ca2-894e-db77e160355e";
+        assert_eq!(ItemId::from_str(v3), Err(IdError::NotVersion4));
+        assert_eq!(GateId::from_str(v3), Err(IdError::NotVersion4));
     }
 }
