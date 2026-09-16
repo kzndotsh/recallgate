@@ -6,15 +6,15 @@ Names in this file are the only names for these ideas in `crates/core`. Product 
 
 Recall Gate is a **desktop gate** with a **local question deck**. The freeze loop, cooldown, abort, and MCQ on the lock surface are the center of the design.
 
-Spaced repetition schedules when items become due. It is **not** an Anki clone. Optional **import** from external decks (for example Anki `.apkg`) may land later. Import copies rows into this domain. It does not run Anki at freeze time and does not shape v0 types.
+v0 does **not** implement spaced repetition per card. You configure **how often the gate may fire**. Items are questions in a deck; when the gate fires, the daemon picks one (for example at random among non-suspended items).
 
-Do not model notes, card types, HTML templates, or a second scheduler API in core because Anki has them.
+Optional import from external decks and smarter scheduling may land later. They do not shape v0 types.
 
 ## Identifiers (v0)
 
 | Type | Meaning |
 | --- | --- |
-| `ItemId` | One schedulable MCQ unit (stem, choices, answer index, schedule) |
+| `ItemId` | One MCQ in the deck |
 | `GateId` | One freeze episode (lock, optional cooldown, relock) |
 
 v0 uses a single id per row. [protocol.md](protocol.md) may expose both `card_id` and `prompt_id` on the wire with the **same** `ItemId` until a future version needs separate presentation snapshots.
@@ -27,30 +27,33 @@ An `Item` has:
 - `stem` string
 - `choices` exactly four strings
 - `correct_index` in `0..3`
-- `schedule` (see below)
-- `suspended` boolean. Suspended items never appear in due lists.
+- `suspended` boolean. Suspended items are not picked for a freeze.
 
-Optional `external_ref` string for tracing import source. Opaque to scheduling. Not required for local-only decks.
+Optional `external_ref` string for tracing import source. Not required for local-only decks.
 
-## Schedule (v0)
+There is no per-item `due_at`, interval, or scheduler state in v0.
 
-Scheduling is **pluggable**. Core stores a snapshot the active algorithm needs. v0 uses a small struct, not an Anki queue enum.
+## Gate cadence (v0)
+
+**`GateCadence`** is user configuration for how often freezes are allowed to start.
 
 | Field | Role |
 | --- | --- |
-| `due_at` | When the item may be picked for a freeze |
-| `reps`, `lapses` | Counters for analytics and scheduler input |
-| `memory` | Algorithm-specific state (for example stability and difficulty if using FSRS defaults) |
+| `lock_interval` | Minimum duration after an unlock before another freeze may start |
 
-There is no `New | Learning | Review | Relearning` enum in v0 core unless a PR adds it with a concrete scheduler requirement. Suspended is a flag on the item, not a queue.
+The compositor or idle helper (for example `swayidle`) may still decide *when* to request a lock. The daemon enforces that requests respect `lock_interval` since the last unlock, except for explicit manual or RPC `gate_lock` if the product allows those to bypass the interval.
 
-## Rating and reviews
+Store `lock_interval` with daemon settings. It is not a field on each `Item`.
 
-`Rating` is `Again`, `Hard`, `Good`, or `Easy`. There is no fifth grade.
+**Cooldown** after abort is separate: a fixed short unlock window, then relock. It is not the same setting as `lock_interval`.
 
-`ReviewLog` is append-only. Each entry has `ItemId`, `Rating`, timestamps, and schedule snapshots before and after the rating. A review is produced only from answering the MCQ on the gate, not from abort.
+## Answers (v0)
 
-v0 MCQ mapping: wrong index → `Again`, correct index → `Good`. Other grades are for later interaction kinds.
+When the user answers the MCQ on the lock screen, core records an **`Answer`** (append-only): `ItemId`, chosen index, whether it was correct, and timestamp.
+
+Wrong index → incorrect (product maps this to an `Again`-style outcome in the UI). Correct index → correct (`Good`-style). There is no per-card schedule update in v0.
+
+An abort path cannot create an `Answer`. An answer path cannot record an abort.
 
 ## Gate (freeze episode)
 
@@ -66,19 +69,19 @@ v0 MCQ mapping: wrong index → `Again`, correct index → `Good`. Other grades 
 
 At most one `Locked` phase exists. Crash with `Locked` on disk reloads as `Locked` and the lock backend must freeze again.
 
-When a cooldown ends, the daemon starts a new `Locked` phase (new `GateId`, pick due `ItemId`).
+When a cooldown ends, the daemon starts a new `Locked` phase (new `GateId`, pick an `ItemId`).
 
 ## Abort
 
 `Abort` records how the user escaped (chord, hold, confirm, and similar), timestamps, and cost paid. It is a gate event.
 
-An abort path cannot create a `ReviewLog`. A review path cannot record an abort.
+## Picking an item
 
-## Due selection
+`deck_items()` returns non-suspended `ItemId`s. `pick_item()` chooses one for the next lock (v0: uniform random unless a later PR defines round-robin).
 
-`due_items()` returns `ItemId`s that are not suspended and have `due_at` in the past (or are new, per scheduler rules). The daemon picks one when `gate_lock` omits an item.
+`gate_due` on the wire lists items that may be shown (v0: same as active deck items). It does not mean each row has its own due time.
 
-v0 source: local table of items. Agents may append rows via `gate_push_prompt`.
+Agents append MCQs via `gate_push_prompt`.
 
 ## Wire mapping (v0)
 
@@ -90,20 +93,18 @@ v0 source: local table of items. Agents may append rows via `gate_push_prompt`.
 
 ## Later (not v0 core)
 
-These are explicitly out of scope until a dedicated PR defines them.
-
-- Separate `PromptId` for immutable snapshots when item text changes but history must point at old wording.
-- `TypedRecall`, reveal-then-grade, or HTML-bearing prompts.
-- Anki `.apkg` import mapping into `Item` + `external_ref`.
-- Dual sync with any external study app while the daemon is the writer.
+- Per-item scheduling (`due_at`, intervals, FSRS or other algorithms).
+- `Rating` grades beyond correct / incorrect logging.
+- Separate `PromptId` for immutable snapshots.
+- Typed or HTML prompts.
+- Deck import mapping.
 
 ## Illegal combinations
 
 These must not be representable in v0.
 
 - `Unlocked` stored as open gate state
-- `Rating` without `ItemId` and `reviewed_at`
-- Due list including a suspended item
-- `Abort` that writes `ReviewLog`
+- `Answer` without `ItemId` and timestamp
+- Picking a suspended item for `Locked`
+- `Abort` that writes an `Answer`
 - Two concurrent `Locked` phases
-- Import or sync path that calls an external scheduler during a freeze

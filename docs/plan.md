@@ -82,7 +82,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 **Build.**
 
 - [ ] Add newtypes `ItemId`, `GateId` in `crates/core/src/ids.rs`.
-- [ ] Add `Item`, `Schedule`, `Rating`, `GatePhase`, `Abort`, `ReviewLog` per [domain.md](domain.md). An abort cannot construct a `ReviewLog`.
+- [ ] Add `Item`, `GateCadence`, `GatePhase`, `Abort`, `Answer` per [domain.md](domain.md). An abort cannot construct an `Answer`.
 
 **You see.**
 
@@ -100,7 +100,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 - [ ] Lane 4. Construct an `Mcq` prompt and map a wrong index to `Rating::Again`. Save `pr-core-lane-4.png`. Pass when that test name is in stdout.
 - [ ] Lane 5. Construct a correct index mapped to `Rating::Good`. Save `pr-core-lane-5.png`. Pass when that test name is in stdout.
 - [ ] Lane 6. Attempt `GatePhase::Idle` while a session id is still held. Save `pr-core-lane-6.png`. Pass when the test asserts the constructor returns `Err`.
-- [ ] Lane 7. `Abort` type has no `ReviewLog` field. Save `pr-core-lane-7.png`. Pass when `cargo test` covers `abort_is_not_a_review`.
+- [ ] Lane 7. `Abort` type has no `Answer` field. Save `pr-core-lane-7.png`. Pass when `cargo test` covers `abort_is_not_an_answer`.
 - [ ] Lane 8. Suspended queue cannot become a lock prompt. Save `pr-core-lane-8.png`. Pass when `due_excludes_suspended` passes.
 - [ ] Lane 9. `make check` on the Ubuntu CI-equivalent image (see `.github/workflows/ci.yml`), or `nix build .#recallgate-core` when using Nix. Save `pr-core-lane-9.png`. Pass when the chosen command exits 0.
 - [ ] Lane 10. `cargo fmt --check`. Save `pr-core-lane-10.png`. Pass when rustfmt reports no diffs.
@@ -133,7 +133,7 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 **Build.**
 
-- [ ] Add SQLite persistence for `Item`, schedule snapshots, `GatePhase`, `Abort`, and `ReviewLog` in `crates/core/src/store.rs`. Crash with `Locked` still on disk must reload as `Locked`.
+- [ ] Add SQLite persistence for `Item`, `GateCadence`, `GatePhase`, `Abort`, and `Answer` in `crates/core/src/store.rs`. Crash with `Locked` still on disk must reload as `Locked`.
 
 **You see.**
 
@@ -147,11 +147,11 @@ Each live lane runs on its own cloud VM at the PR head. Drive through `control-c
 
 - [ ] Lane 1. Regression lane against trunk. Run `cargo test -p recallgate-core` at trunk and head. If trunk lacks persistence, record that and gate reload of a locked row plus `test result: ok`. Save `pr-store-lane-1.png`. Pass when head includes `store_roundtrip` ok.
 - [ ] Lane 2. Kill the test process after `begin_lock` then reopen. Save `pr-store-lane-2.png`. Pass when the reopened phase is `Locked`.
-- [ ] Lane 3. Write an `Abort` row and assert `ReviewLog` count is unchanged. Save `pr-store-lane-3.png`. Pass when that assertion is in the test stdout.
+- [ ] Lane 3. Write an `Abort` row and assert `Answer` count is unchanged. Save `pr-store-lane-3.png`. Pass when that assertion is in the test stdout.
 - [ ] Lane 4. Two `Locked` inserts in one file fail. Save `pr-store-lane-4.png`. Pass when the second insert returns `Err`.
 - [ ] Lane 5. Import a fixture JSON prompt and list it as due. Save `pr-store-lane-5.png`. Pass when due count is 1.
 - [ ] Lane 6. Suspended card is absent from due. Save `pr-store-lane-6.png`. Pass when due count is 0 for that card.
-- [ ] Lane 7. Scheduler `memory` snapshot roundtrips without loss (for example stability and difficulty if using FSRS defaults). Save `pr-store-lane-7.png`. Pass when equality holds.
+- [ ] Lane 7. `GateCadence.lock_interval` roundtrips through the store. Save `pr-store-lane-7.png`. Pass when equality holds.
 - [ ] Lane 8. `clippy -D warnings` on `crates/core`. Save `pr-store-lane-8.png`. Pass when clippy exits 0.
 - [ ] Lane 9. Corrupt the db header and open. Save `pr-store-lane-9.png`. Pass when open returns a typed error, not a panic.
 - [ ] Lane 10. Concurrent writers are not in this crate. Document single-writer in the test name `store_is_single_writer`. Save `pr-store-lane-10.png`. Pass when that test exists and passes.
