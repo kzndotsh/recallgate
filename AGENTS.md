@@ -16,9 +16,12 @@ Operational notes for coding agents working in this repository. Product behavior
 ## Commands
 
 ```bash
-make check          # fmt, clippy -D warnings, tests (matches CI)
+make check          # fmt, clippy, tests, conventional commits (matches CI)
+make check-commits  # commit subjects only
 cargo test -p recallgate-core
 ```
+
+Commit messages must follow Conventional Commits. See [CONTRIBUTING.md](CONTRIBUTING.md#commit-messages).
 
 Optional Nix: `nix develop`, then the same commands.
 

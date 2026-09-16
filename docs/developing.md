@@ -59,7 +59,8 @@ sudo apt install -y \
 | `cargo test --workspace` | Unit and integration tests |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lint |
 | `cargo fmt --all` | Format (use `--check` in CI) |
-| `make check` | `fmt` + `clippy` + `test` |
+| `make check` | `fmt` + `clippy` + `test` + conventional commit subjects |
+| `make check-commits` | Validate commits since merge-base with `origin/main` |
 
 ## Platform expectations
 

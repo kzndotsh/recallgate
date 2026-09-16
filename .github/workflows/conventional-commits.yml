@@ -1,0 +1,33 @@
+name: Conventional Commits
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  commits:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit messages
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            RANGE="${BASE_SHA}..${HEAD_SHA}"
+          elif [[ "$BEFORE_SHA" == 0000000000000000000000000000000000000000 ]]; then
+            RANGE="${AFTER_SHA}"
+          else
+            RANGE="${BEFORE_SHA}..${AFTER_SHA}"
+          fi
+          chmod +x scripts/validate-conventional-commits.sh
+          ./scripts/validate-conventional-commits.sh "$RANGE"

@@ -28,9 +28,38 @@ The implementation stack in [docs/plan.md](docs/plan.md) defines crate boundarie
 - Do not put AnkiConnect or HTML templates on the freeze path.
 - Wayland lock uses **session lock**, not a layer-shell overlay as the product lock.
 
-## Commits and review
+## Commit messages
 
-- Use clear commit messages. Conventional prefixes (`feat:`, `fix:`, `chore:`, `docs:`) are welcome.
+Every commit must follow [Conventional Commits](https://www.conventionalcommits.org/).
+
+```
+type(optional-scope): short description
+```
+
+| Type | Use for |
+| --- | --- |
+| `feat` | New behavior |
+| `fix` | Bug fix |
+| `docs` | Documentation only |
+| `style` | Formatting, no logic change |
+| `refactor` | Code change without fixing or adding behavior |
+| `perf` | Performance |
+| `test` | Tests only |
+| `build` | Build system or dependencies |
+| `ci` | CI configuration |
+| `chore` | Maintenance, tooling |
+| `revert` | Reverts a prior commit |
+
+Rules:
+
+- Use lowercase for the type. Scope is optional (`feat(daemon): …`).
+- Description is imperative and concise. No trailing period.
+- Breaking changes: `type!:` or a `BREAKING CHANGE:` footer in the body.
+
+CI rejects pull requests with non-conventional subjects. Locally, run **`make check-commits`** (also part of **`make check`**).
+
+## Review
+
 - Lock UI changes (`pr-wayland`, `pr-x11`) need screenshots or video per the plan review gate.
 
 ## Questions
