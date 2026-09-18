@@ -39,6 +39,7 @@ Stack order is defined in [docs/plan.md](docs/plan.md). Stay inside one PR’s p
 
 ## Testing
 
+- **`recallgate-core`:** integration tests live under `crates/core/tests/` (one file per area: `gate`, `item`, `ids`, `abort`). Do not add `#[cfg(test)]` modules in `src/` unless you need to exercise private internals; prefer the public API in `tests/`.
 - Default gate: **`make check`** before push.
 - GUI or session-lock work: use nested compositors as described in [docs/plan.md](docs/plan.md) live lanes (nested Sway, Xephyr). Avoid locking the operator’s real session unless they ask.
 - Merge-ready criteria for implementation PRs are in the plan (unit, live, perf), not only `cargo test`.
