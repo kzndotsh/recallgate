@@ -4,19 +4,25 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
-  outputs = { self, nixpkgs, flake-utils, ... }:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ rust-overlay.overlays.default ];
+        };
+        rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+        rustPlatform = pkgs.makeRustPlatform {
+          cargo = rustToolchain;
+          rustc = rustToolchain;
+        };
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
-            rustc
-            cargo
-            clippy
-            rustfmt
+            rustToolchain
             pkg-config
             openssl
             sqlite
@@ -29,7 +35,7 @@
           ];
         };
 
-        packages.recallgate-core = pkgs.rustPlatform.buildRustPackage {
+        packages.recallgate-core = rustPlatform.buildRustPackage {
           pname = "recallgate-core";
           version = "0.0.0";
           src = pkgs.lib.cleanSource ./.;
