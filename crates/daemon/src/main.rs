@@ -4,6 +4,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use recallgate_core::Store;
 use recallgate_daemon::rpc::{DaemonState, LockCapability};
@@ -21,28 +23,39 @@ fn run() -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
     let store = Store::open(&db_path).map_err(|err| err.to_string())?;
-    let mut state = DaemonState::new(store, LockCapability::None);
+    let state = Arc::new(Mutex::new(DaemonState::new(store, LockCapability::None)));
 
     let socket_path = runtime_socket_path()?;
     if socket_path.exists() {
-        return Err(format!(
-            "socket already exists at {} (another daemon running?)",
-            socket_path.display()
-        ));
+        match UnixStream::connect(&socket_path) {
+            Ok(_) => {
+                return Err(format!(
+                    "socket already exists at {} (another daemon running?)",
+                    socket_path.display()
+                ));
+            }
+            Err(_) => {
+                fs::remove_file(&socket_path).map_err(|err| err.to_string())?;
+            }
+        }
     }
     let listener = UnixListener::bind(&socket_path).map_err(|err| err.to_string())?;
     let _socket_guard = SocketGuard(socket_path.clone());
 
     for stream in listener.incoming() {
         let stream = stream.map_err(|err| err.to_string())?;
-        if let Err(err) = serve_client(stream, &mut state) {
-            eprintln!("recallgate-daemon: client error: {err}");
-        }
+        let state = Arc::clone(&state);
+        std::thread::spawn(move || {
+            if let Err(err) = serve_client(stream, state) {
+                eprintln!("recallgate-daemon: client error: {err}");
+            }
+        });
     }
     Ok(())
 }
 
-fn serve_client(stream: UnixStream, state: &mut DaemonState) -> Result<(), String> {
+fn serve_client(stream: UnixStream, state: Arc<Mutex<DaemonState>>) -> Result<(), String> {
+    stream.set_read_timeout(Some(Duration::from_secs(30))).map_err(|e| e.to_string())?;
     let mut reader = BufReader::new(stream.try_clone().map_err(|e| e.to_string())?);
     let mut writer = stream;
     let mut line = String::new();
@@ -52,7 +65,10 @@ fn serve_client(stream: UnixStream, state: &mut DaemonState) -> Result<(), Strin
         if bytes == 0 {
             break;
         }
-        let response = state.handle_line(&line);
+        let response = {
+            let mut state = state.lock().map_err(|_| "daemon state poisoned".to_string())?;
+            state.handle_line(&line)
+        };
         writer.write_all(response.as_bytes()).map_err(|e| e.to_string())?;
         writer.write_all(b"\n").map_err(|e| e.to_string())?;
         writer.flush().map_err(|e| e.to_string())?;

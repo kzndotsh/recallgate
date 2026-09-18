@@ -93,7 +93,6 @@ fn malformed_json_then_next_call_works() {
     let bad = harness.handle("{not json");
     let bad_body = parse_response(&bad);
     assert_eq!(bad_body["error"]["code"], -32700);
-    let ok =
-        parse_response(&harness.handle(r#"{"jsonrpc":"2.0","method":"gate_status","id":8}"#));
+    let ok = parse_response(&harness.handle(r#"{"jsonrpc":"2.0","method":"gate_status","id":8}"#));
     assert_eq!(ok["result"]["phase"], "idle");
 }

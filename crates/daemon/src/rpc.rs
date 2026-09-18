@@ -62,9 +62,13 @@ impl DaemonState {
         if trimmed.is_empty() {
             return error_response(Value::Null, RpcError::InvalidRequest);
         }
-        let request: JsonRpcRequest = match serde_json::from_str(trimmed) {
-            Ok(req) => req,
+        let value: Value = match serde_json::from_str(trimmed) {
+            Ok(value) => value,
             Err(_) => return error_response(Value::Null, RpcError::Parse),
+        };
+        let request: JsonRpcRequest = match serde_json::from_value(value) {
+            Ok(req) => req,
+            Err(_) => return error_response(Value::Null, RpcError::InvalidRequest),
         };
         if request.jsonrpc != JSONRPC_VERSION {
             return error_response(request.id, RpcError::InvalidRequest);
@@ -138,8 +142,11 @@ impl DaemonState {
             GatePhase::Idle | GatePhase::Cooldown(_) => {}
         }
 
-        let lock_params: GateLockParams =
-            serde_json::from_value(params.clone()).unwrap_or(GateLockParams { prompt_id: None });
+        let lock_params = if params.is_null() {
+            GateLockParams { prompt_id: None }
+        } else {
+            serde_json::from_value(params.clone()).map_err(|_| RpcError::InvalidParams)?
+        };
 
         let item_id = self.resolve_lock_item(lock_params.prompt_id.as_deref())?;
         let item = self.store.item(item_id).map_err(map_store)?.ok_or(RpcError::EmptyDeck)?;
@@ -184,7 +191,7 @@ struct JsonRpcRequest {
     params: Option<Value>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 struct GateLockParams {
     prompt_id: Option<String>,
 }
@@ -221,6 +228,8 @@ fn error_response(id: Value, err: RpcError) -> String {
 fn map_store(err: StoreError) -> RpcError {
     match err {
         StoreError::Gate(GateError::AlreadyLocked) => RpcError::AlreadyLocked,
+        StoreError::InvalidPrompt(_) | StoreError::Item(_) => RpcError::InvalidParams,
+        StoreError::ItemMissing | StoreError::ItemSuspended => RpcError::InvalidParams,
         other => RpcError::Store(other.to_string()),
     }
 }
