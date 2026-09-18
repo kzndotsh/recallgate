@@ -114,6 +114,52 @@ fn cadence_lock_interval_roundtrips() {
 }
 
 #[test]
+fn cadence_subsecond_interval_roundtrips() {
+    let file = NamedTempFile::new().expect("temp db");
+    let mut store = Store::open(file.path()).expect("open");
+    let cadence = GateCadence::new(Duration::from_millis(1500));
+    store.set_cadence(cadence).expect("set");
+    assert_eq!(store.cadence().expect("get"), cadence);
+}
+
+#[test]
+fn begin_lock_rejects_missing_item() {
+    let file = NamedTempFile::new().expect("temp db");
+    let mut store = Store::open(file.path()).expect("open");
+    let err = store
+        .begin_lock(LockedState::new(GateId::new(), recallgate_core::ItemId::new(), Utc::now()))
+        .expect_err("lock");
+    assert!(matches!(err, StoreError::ItemMissing));
+}
+
+#[test]
+fn begin_lock_rejects_suspended_item() {
+    let file = NamedTempFile::new().expect("temp db");
+    let mut store = Store::open(file.path()).expect("open");
+    let mut item = sample_item();
+    item.suspended = true;
+    let item_id = item.id;
+    store.push_item(item).expect("item");
+    let err =
+        store.begin_lock(LockedState::new(GateId::new(), item_id, Utc::now())).expect_err("lock");
+    assert!(matches!(err, StoreError::ItemSuspended));
+}
+
+#[test]
+fn user_version_without_schema_is_corrupt() {
+    let file = NamedTempFile::new().expect("temp db");
+    {
+        let conn = rusqlite::Connection::open(file.path()).expect("sqlite");
+        conn.execute_batch("PRAGMA user_version = 1;").expect("pragma");
+    }
+    let open_result = Store::open(file.path());
+    assert!(open_result.is_err());
+    if let Err(err) = open_result {
+        assert!(matches!(err, StoreError::CorruptDatabase));
+    }
+}
+
+#[test]
 fn corrupt_header_returns_typed_error() {
     let file = NamedTempFile::new().expect("temp db");
     std::fs::write(file.path(), b"not a sqlite file").expect("write");

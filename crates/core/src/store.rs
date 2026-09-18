@@ -23,6 +23,8 @@ pub enum StoreError {
     Gate(GateError),
     InvalidPrompt(String),
     Item(crate::item::ItemError),
+    ItemMissing,
+    ItemSuspended,
     Sqlite(String),
 }
 
@@ -33,6 +35,8 @@ impl fmt::Display for StoreError {
             Self::Gate(err) => write!(f, "{err:?}"),
             Self::InvalidPrompt(msg) => write!(f, "{msg}"),
             Self::Item(err) => write!(f, "{err:?}"),
+            Self::ItemMissing => write!(f, "item not found in deck"),
+            Self::ItemSuspended => write!(f, "item is suspended and cannot be locked"),
             Self::Sqlite(msg) => write!(f, "{msg}"),
         }
     }
@@ -203,6 +207,7 @@ impl Store {
     }
 
     pub fn begin_lock(&mut self, locked: LockedState) -> Result<(), StoreError> {
+        self.ensure_lock_item(locked.item_id)?;
         let mut state = self.gate()?;
         state.begin_lock(locked)?;
         self.set_gate(&state)
@@ -243,20 +248,34 @@ impl Store {
     }
 
     pub fn cadence(&self) -> Result<GateCadence, StoreError> {
-        let secs: i64 = self.conn.query_row(
-            "SELECT lock_interval_secs FROM settings WHERE id = ?1",
+        let ms: i64 = self.conn.query_row(
+            "SELECT lock_interval_ms FROM settings WHERE id = ?1",
             params![SETTINGS_ROW_ID],
             |row| row.get(0),
         )?;
-        Ok(GateCadence::new(Duration::from_secs(secs as u64)))
+        if ms < 0 {
+            return Err(StoreError::CorruptDatabase);
+        }
+        Ok(GateCadence::new(Duration::from_millis(ms as u64)))
     }
 
     pub fn set_cadence(&mut self, cadence: GateCadence) -> Result<(), StoreError> {
-        let secs = cadence.lock_interval.as_secs();
+        let ms = cadence.lock_interval.as_millis();
+        let ms = i64::try_from(ms).map_err(|_| StoreError::CorruptDatabase)?;
         self.conn.execute(
-            "UPDATE settings SET lock_interval_secs = ?2 WHERE id = ?1",
-            params![SETTINGS_ROW_ID, secs as i64],
+            "UPDATE settings SET lock_interval_ms = ?2 WHERE id = ?1",
+            params![SETTINGS_ROW_ID, ms],
         )?;
+        Ok(())
+    }
+
+    fn ensure_lock_item(&self, item_id: ItemId) -> Result<(), StoreError> {
+        let Some(item) = self.item(item_id)? else {
+            return Err(StoreError::ItemMissing);
+        };
+        if item.suspended {
+            return Err(StoreError::ItemSuspended);
+        }
         Ok(())
     }
 
@@ -264,7 +283,7 @@ impl Store {
         let version: i32 =
             self.conn.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap_or(0);
         if version >= SCHEMA_VERSION {
-            return Ok(());
+            return ensure_schema(&self.conn);
         }
         self.conn.execute_batch(
             "
@@ -307,16 +326,42 @@ impl Store {
 
             CREATE TABLE settings (
               id INTEGER PRIMARY KEY CHECK (id = 1),
-              lock_interval_secs INTEGER NOT NULL
+              lock_interval_ms INTEGER NOT NULL
             );
 
-            INSERT INTO settings (id, lock_interval_secs) VALUES (1, 0);
+            INSERT INTO settings (id, lock_interval_ms) VALUES (1, 0);
 
             PRAGMA user_version = 1;
             ",
         )?;
-        Ok(())
+        ensure_schema(&self.conn)
     }
+}
+
+const REQUIRED_TABLES: &[&str] = &["items", "gate_singleton", "answers", "aborts", "settings"];
+
+fn ensure_schema(conn: &Connection) -> Result<(), StoreError> {
+    for table in REQUIRED_TABLES {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            params![table],
+            |row| row.get(0),
+        )?;
+        if count == 0 {
+            return Err(StoreError::CorruptDatabase);
+        }
+    }
+    let gate_rows: i64 =
+        conn.query_row("SELECT COUNT(*) FROM gate_singleton WHERE id = 1", [], |row| row.get(0))?;
+    if gate_rows != 1 {
+        return Err(StoreError::CorruptDatabase);
+    }
+    let settings_rows: i64 =
+        conn.query_row("SELECT COUNT(*) FROM settings WHERE id = 1", [], |row| row.get(0))?;
+    if settings_rows != 1 {
+        return Err(StoreError::CorruptDatabase);
+    }
+    Ok(())
 }
 
 type EncodedGateRow = (String, Option<Vec<u8>>, Option<Vec<u8>>, Option<String>, Option<String>);
