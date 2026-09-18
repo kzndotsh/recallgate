@@ -1,6 +1,7 @@
 #![cfg(feature = "x11")]
 
 use std::fs;
+use std::path::PathBuf;
 use std::process;
 
 use clap::Parser;
@@ -18,11 +19,18 @@ struct Cli {}
 
 fn main() {
     let _cli = Cli::parse();
-    if let Err(err) = run() {
-        eprintln!("{err}");
-        let code = if err == GrabError::GrabBusy { 2 } else { 1 };
-        process::exit(code);
-    }
+    let code = match run() {
+        Ok(()) => 0,
+        Err(err) => {
+            eprintln!("{err}");
+            if err == GrabError::GrabBusy {
+                2
+            } else {
+                1
+            }
+        }
+    };
+    process::exit(code);
 }
 
 fn run() -> Result<(), GrabError> {
@@ -30,10 +38,12 @@ fn run() -> Result<(), GrabError> {
         return Err(GrabError::Display("DISPLAY is not set".into()));
     }
 
-    let ready_path = paths::x11_ready_path().map_err(|err| GrabError::Display(err))?;
+    let ready_path = paths::x11_ready_path().map_err(GrabError::Display)?;
+    let socket_path = paths::x11_ipc_path().map_err(GrabError::Display)?;
     let (sender, receiver) = std::sync::mpsc::channel();
-    ipc::spawn_listener(sender).map_err(|err| GrabError::Display(err))?;
+    ipc::spawn_listener(sender).map_err(GrabError::Display)?;
 
+    let _socket_guard = SocketGuard(socket_path);
     if let Some(parent) = ready_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -43,9 +53,17 @@ fn run() -> Result<(), GrabError> {
     grab::run(receiver)
 }
 
-struct ReadyGuard(std::path::PathBuf);
+struct ReadyGuard(PathBuf);
 
 impl Drop for ReadyGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+struct SocketGuard(PathBuf);
+
+impl Drop for SocketGuard {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
     }

@@ -181,12 +181,6 @@ fn create_surfaces(
     for monitor in monitors {
         let window = conn.generate_id().map_err(map_conn_err)?;
         let gc = conn.generate_id().map_err(map_conn_err)?;
-        conn.create_gc(
-            gc,
-            window,
-            &CreateGCAux::new().foreground(white).background(black).font(font),
-        )
-        .map_err(map_conn_err)?;
         conn.create_window(
             screen.root_depth,
             window,
@@ -205,6 +199,12 @@ fn create_surfaces(
         )
         .map_err(map_conn_err)?;
         conn.map_window(window).map_err(map_conn_err)?;
+        conn.create_gc(
+            gc,
+            window,
+            &CreateGCAux::new().foreground(white).background(black).font(font),
+        )
+        .map_err(map_conn_err)?;
         surfaces.push(OutputSurface { window, gc, width: monitor.width, height: monitor.height });
     }
     Ok(surfaces)
