@@ -1015,6 +1015,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "recallgate-mcp"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rusqlite"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
