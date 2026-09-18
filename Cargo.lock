@@ -335,6 +335,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "recallgate-daemon"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "rand",
+ "recallgate-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "rusqlite"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,30 @@
+[package]
+name = "recallgate-daemon"
+description = "Recall Gate daemon (Unix socket JSON-RPC)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "recallgate-daemon"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+rand = "0.8.5"
+recallgate-core = { path = "../core" }
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+
+[dev-dependencies]
+recallgate-core = { path = "../core" }
+tempfile = "=3.14.0"
+
+[lints]
+workspace = true
