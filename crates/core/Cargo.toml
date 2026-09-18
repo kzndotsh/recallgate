@@ -1,6 +1,6 @@
 [package]
 name = "recallgate-core"
-description = "Recall Gate domain types, scheduling, and persistence"
+description = "Recall Gate domain types (gate, deck, MCQ, cadence)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
