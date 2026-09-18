@@ -95,10 +95,8 @@ impl McpServer {
 
     fn tools_call(&self, params: Option<&Value>) -> Result<Value, ServerError> {
         let params = params.ok_or_else(ServerError::invalid_params)?;
-        let name = params
-            .get("name")
-            .and_then(Value::as_str)
-            .ok_or_else(ServerError::invalid_params)?;
+        let name =
+            params.get("name").and_then(Value::as_str).ok_or_else(ServerError::invalid_params)?;
         let arguments =
             params.get("arguments").cloned().unwrap_or(Value::Object(Default::default()));
 
@@ -121,10 +119,8 @@ impl McpServer {
 
     fn resources_read(&self, params: Option<&Value>) -> Result<Value, ServerError> {
         let params = params.ok_or_else(ServerError::invalid_params)?;
-        let uri = params
-            .get("uri")
-            .and_then(Value::as_str)
-            .ok_or_else(ServerError::invalid_params)?;
+        let uri =
+            params.get("uri").and_then(Value::as_str).ok_or_else(ServerError::invalid_params)?;
         if uri != SESSION_RESOURCE_URI {
             return Err(ServerError { code: -32602, message: "unknown resource".into() });
         }
