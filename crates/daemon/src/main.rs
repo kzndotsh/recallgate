@@ -8,15 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use recallgate_core::Store;
-use recallgate_daemon::rpc::DaemonState;
-use recallgate_daemon::{wayland, x11};
-
-fn startup_capability() -> recallgate_daemon::LockCapability {
-    if wayland::detect_capability() == recallgate_daemon::LockCapability::SessionLock {
-        return recallgate_daemon::LockCapability::SessionLock;
-    }
-    x11::detect_capability()
-}
+use recallgate_daemon::rpc::{DaemonState, LockCapability};
 
 fn main() {
     if let Err(err) = run() {
@@ -31,8 +23,18 @@ fn run() -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
     let store = Store::open(&db_path).map_err(|err| err.to_string())?;
-    let capability = startup_capability();
-    let state = Arc::new(Mutex::new(DaemonState::new(store, capability)));
+    let state = Arc::new(Mutex::new(DaemonState::new(store, LockCapability::None)));
+    {
+        let state = Arc::clone(&state);
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(200));
+            if let Ok(mut state) = state.lock() {
+                if let Err(err) = state.tick_cooldown() {
+                    eprintln!("recallgate-daemon: cooldown tick: {err:?}");
+                }
+            }
+        });
+    }
 
     let socket_path = runtime_socket_path()?;
     if socket_path.exists() {

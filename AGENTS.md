@@ -26,16 +26,17 @@ Commit messages must follow Conventional Commits. See [CONTRIBUTING.md](CONTRIBU
 
 Optional Nix: `nix develop`, then the same commands.
 
-## Workspace layout (planned)
+## Workspace layout
 
 | Crate / path | Role |
 | --- | --- |
-| `crates/core` | Library; domain and persistence land here per plan. |
-| `crates/daemon` | Daemon binary (not in tree until `pr-daemon`). |
-| `crates/lock-wayland`, `crates/lock-x11` | Lock clients (later PRs). |
-| `crates/mcp` | MCP adapter (later PR). |
+| `crates/core` | Domain types and SQLite store |
+| `crates/daemon` | JSON-RPC daemon (`recallgate-daemon`) |
+| `crates/lock-wayland` | Wayland session-lock client (`--features ui`) |
+| `crates/lock-x11` | X11 grab client (`--features x11`) |
+| `crates/mcp` | MCP adapter (`recallgate-mcp`) |
 
-Stack order is defined in [docs/plan.md](docs/plan.md). Stay inside one PR’s paths unless the plan stacks branches.
+Stack order in [docs/plan.md](docs/plan.md) is historical. Follow-up work that spans crates is allowed when the operator asks for one PR.
 
 ## Testing
 

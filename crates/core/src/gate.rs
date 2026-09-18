@@ -1,3 +1,5 @@
+use std::fmt;
+
 use chrono::{DateTime, Utc};
 
 use crate::ids::{GateId, ItemId};
@@ -28,6 +30,16 @@ pub enum GateError {
     AlreadyLocked,
     NotLocked,
     IllegalTransition,
+}
+
+impl fmt::Display for GateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AlreadyLocked => write!(f, "already_locked"),
+            Self::NotLocked => write!(f, "not_locked"),
+            Self::IllegalTransition => write!(f, "illegal_transition"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

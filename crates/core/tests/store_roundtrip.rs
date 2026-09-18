@@ -195,11 +195,148 @@ fn answer_roundtrip_through_store() {
     let file = NamedTempFile::new().expect("temp db");
     let mut store = Store::open(file.path()).expect("open");
     let item = sample_item();
+    let item_id = item.id;
     let answer = item
         .answer_for_choice(recallgate_core::ChoiceIndex::try_new(1).expect("index"), Utc::now());
     store.push_item(item).expect("item");
+    store.begin_lock(LockedState::new(GateId::new(), item_id, Utc::now())).expect("lock");
     store.append_answer(&answer).expect("answer");
     assert_eq!(store.answer_count().expect("count"), 1);
+}
+
+#[test]
+fn append_answer_requires_lock() {
+    let file = NamedTempFile::new().expect("temp db");
+    let mut store = Store::open(file.path()).expect("open");
+    let item = sample_item();
+    let answer = item
+        .answer_for_choice(recallgate_core::ChoiceIndex::try_new(1).expect("index"), Utc::now());
+    store.push_item(item).expect("item");
+    let err = store.append_answer(&answer).expect_err("idle");
+    assert!(matches!(err, StoreError::Gate(GateError::NotLocked)));
+}
+
+#[test]
+fn cooldown_roundtrip_and_relock() {
+    let file = NamedTempFile::new().expect("temp db");
+    let path = file.path().to_path_buf();
+    let item = sample_item();
+    let item_id = item.id;
+    let gate_id = GateId::new();
+    let until = Utc::now();
+    {
+        let mut store = Store::open(&path).expect("open");
+        store.push_item(item).expect("item");
+        store.begin_lock(LockedState::new(gate_id, item_id, Utc::now())).expect("lock");
+        store
+            .begin_cooldown(recallgate_core::CooldownState::new(gate_id, until))
+            .expect("cooldown");
+        let err = store
+            .begin_lock(LockedState::new(GateId::new(), item_id, Utc::now()))
+            .expect_err("lock from cooldown");
+        assert!(matches!(err, StoreError::Gate(GateError::IllegalTransition)));
+    }
+    {
+        let store = Store::open(&path).expect("reopen");
+        match store.gate().expect("gate").phase() {
+            GatePhase::Cooldown(cooldown) => assert_eq!(cooldown.gate_id, gate_id),
+            other => panic!("expected cooldown, got {other:?}"),
+        }
+    }
+    let mut store = Store::open(&path).expect("reopen");
+    store
+        .finish_cooldown_begin_lock(LockedState::new(GateId::new(), item_id, Utc::now()))
+        .expect("relock");
+    assert!(matches!(store.gate().expect("gate").phase(), GatePhase::Locked(_)));
+}
+
+#[test]
+fn abort_row_then_cooldown_leaves_answers_empty() {
+    let file = NamedTempFile::new().expect("temp db");
+    let mut store = Store::open(file.path()).expect("open");
+    let item = sample_item();
+    let item_id = item.id;
+    let gate_id = GateId::new();
+    store.push_item(item).expect("item");
+    store.begin_lock(LockedState::new(gate_id, item_id, Utc::now())).expect("lock");
+    store.append_abort(&Abort::new(gate_id, "hatch", Utc::now(), 1)).expect("abort");
+    store
+        .begin_cooldown(recallgate_core::CooldownState::new(gate_id, Utc::now()))
+        .expect("cooldown");
+    assert_eq!(store.answer_count().expect("answers"), 0);
+    assert_eq!(store.abort_count().expect("aborts"), 1);
+}
+
+#[test]
+fn cooldown_duration_defaults_and_roundtrips() {
+    let file = NamedTempFile::new().expect("temp db");
+    let mut store = Store::open(file.path()).expect("open");
+    assert_eq!(store.cooldown_duration().expect("default"), Duration::from_secs(60));
+    store.set_cooldown_duration(Duration::from_millis(1500)).expect("set");
+    assert_eq!(store.cooldown_duration().expect("get"), Duration::from_millis(1500));
+}
+
+#[test]
+fn last_unlock_roundtrips() {
+    let file = NamedTempFile::new().expect("temp db");
+    let mut store = Store::open(file.path()).expect("open");
+    assert!(store.last_unlock_at().expect("empty").is_none());
+    let at = Utc::now();
+    store.set_last_unlock_at(at).expect("set");
+    let loaded = store.last_unlock_at().expect("get").expect("some");
+    assert_eq!(loaded.timestamp(), at.timestamp());
+}
+
+#[test]
+fn schema_v1_migrates_settings_columns() {
+    let file = NamedTempFile::new().expect("temp db");
+    {
+        let conn = rusqlite::Connection::open(file.path()).expect("sqlite");
+        conn.execute_batch(
+            "
+            CREATE TABLE items (
+              id BLOB PRIMARY KEY NOT NULL,
+              stem TEXT NOT NULL,
+              choices_json TEXT NOT NULL,
+              correct_index INTEGER NOT NULL,
+              suspended INTEGER NOT NULL,
+              external_ref TEXT
+            );
+            CREATE TABLE gate_singleton (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              phase TEXT NOT NULL,
+              gate_id BLOB,
+              item_id BLOB,
+              started_at TEXT,
+              until TEXT
+            );
+            INSERT INTO gate_singleton (id, phase) VALUES (1, 'idle');
+            CREATE TABLE answers (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              item_id BLOB NOT NULL,
+              chosen_index INTEGER NOT NULL,
+              correct INTEGER NOT NULL,
+              answered_at TEXT NOT NULL
+            );
+            CREATE TABLE aborts (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              gate_id BLOB NOT NULL,
+              method TEXT NOT NULL,
+              at TEXT NOT NULL,
+              cost_paid INTEGER NOT NULL
+            );
+            CREATE TABLE settings (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              lock_interval_ms INTEGER NOT NULL
+            );
+            INSERT INTO settings (id, lock_interval_ms) VALUES (1, 0);
+            PRAGMA user_version = 1;
+            ",
+        )
+        .expect("v1");
+    }
+    let store = Store::open(file.path()).expect("migrate");
+    assert_eq!(store.cooldown_duration().expect("cooldown"), Duration::from_secs(60));
 }
 
 #[test]

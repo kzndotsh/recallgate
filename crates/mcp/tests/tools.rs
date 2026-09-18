@@ -50,3 +50,18 @@ fn gate_unlock_tool_call_is_error() {
     let body: serde_json::Value = serde_json::from_str(&raw).expect("json");
     assert_eq!(body["result"]["isError"], true);
 }
+
+#[test]
+fn gate_abort_is_unknown_tool() {
+    let mut server = recallgate_mcp::server::McpServer::default();
+    server
+        .handle_line(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}"#)
+        .expect("init");
+    let names = tools::tool_names();
+    assert!(!names.iter().any(|name| *name == "gate_abort"));
+    let raw = server
+        .handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"gate_abort","arguments":{}}}"#)
+        .expect("call");
+    let body: serde_json::Value = serde_json::from_str(&raw).expect("json");
+    assert_eq!(body["result"]["isError"], true);
+}

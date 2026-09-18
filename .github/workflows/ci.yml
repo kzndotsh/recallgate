@@ -31,3 +31,35 @@ jobs:
             build-essential pkg-config \
             libsqlite3-dev
       - run: make ci
+
+  ui-check:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read Rust toolchain pin
+        id: rust_toolchain
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
+          if [[ -z "$channel" ]]; then
+            echo "missing channel in rust-toolchain.toml" >&2
+            exit 1
+          fi
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust_toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install GTK and X11 development packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config \
+            libgtk-4-dev libgtk-4-layer-shell-dev \
+            libwayland-dev libxkbcommon-dev \
+            libx11-dev libxrandr-dev \
+            libsqlite3-dev
+      - name: Check lock crates with UI features
+        run: |
+          cargo check -p recallgate-lock-wayland --features ui
+          cargo check -p recallgate-lock-x11 --features x11

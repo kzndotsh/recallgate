@@ -86,7 +86,9 @@ Build the Wayland locker binary (needs GTK 4 and `gtk4-layer-shell` ≥ 1.1):
 cargo build -p recallgate-lock-wayland --features ui
 ```
 
-Run `recallgate-lock-wayland` alongside `recallgate-daemon` on a compositor that supports `ext-session-lock-v1`.
+Run `recallgate-lock-wayland` or `recallgate-lock-x11` **alongside** `recallgate-daemon`. Both lockers stay in their event loop after unlock or abort so cooldown relock and a later `gate_lock` work. Do not treat process exit as the unlock path.
+
+Hatch (paid abort): hold `Ctrl+Shift+Escape` for 2 seconds, type `ABORT`, press Enter. Escape and Alt+F4 do not unlock.
 
 Build the X11 locker (needs X11 and RandR development libraries):
 
@@ -108,7 +110,7 @@ Logs go to stderr; stdout is MCP JSON-RPC only.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs `make ci` (format, clippy, tests). Commit subjects are checked by `conventional-commits.yml`. Locally, run `make check` before push to run both.
+`.github/workflows/ci.yml` runs `make ci` (format, clippy, tests) without `--features ui` / `--features x11` so Ubuntu GTK/layer-shell versions cannot fail the merge gate. An optional `ui-check` job installs GTK/X11 packages and `cargo check`s those features; it uses `continue-on-error` because distro `gtk4-layer-shell` is often too old for `gtk4-session-lock`. Use `nix develop` for a feature-on compile. Commit subjects are checked by `conventional-commits.yml`. Locally, run `make check` before push to run both.
 
 ## Related docs
 
