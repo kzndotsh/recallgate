@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use recallgate_core::Store;
-use recallgate_daemon::rpc::{DaemonState, LockCapability};
+use recallgate_daemon::rpc::DaemonState;
+use recallgate_daemon::wayland;
 
 fn main() {
     if let Err(err) = run() {
@@ -23,7 +24,8 @@ fn run() -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
     let store = Store::open(&db_path).map_err(|err| err.to_string())?;
-    let state = Arc::new(Mutex::new(DaemonState::new(store, LockCapability::None)));
+    let capability = wayland::detect_capability();
+    let state = Arc::new(Mutex::new(DaemonState::new(store, capability)));
 
     let socket_path = runtime_socket_path()?;
     if socket_path.exists() {

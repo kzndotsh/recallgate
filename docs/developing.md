@@ -80,6 +80,14 @@ cargo test --workspace
 
 The flake `devShell` installs the same libraries as the table above and puts **`rust-toolchain.toml` on `PATH`** via [rust-overlay](https://github.com/oxalica/rust-overlay) (`fromRustupToolchainFile`). That matches rustup and CI (currently Rust 1.83.0 with `rustfmt` and `clippy`). Use it when you want pinned GTK/Wayland versions without matching distro packages. Merging does not require Nix; GitHub Actions uses apt on `ubuntu-24.04`.
 
+Build the Wayland locker binary (needs GTK 4 and `gtk4-layer-shell` ≥ 1.1):
+
+```bash
+cargo build -p recallgate-lock-wayland --features ui
+```
+
+Run `recallgate-lock-wayland` alongside `recallgate-daemon` on a compositor that supports `ext-session-lock-v1`.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs `make ci` (format, clippy, tests). Commit subjects are checked by `conventional-commits.yml`. Locally, run `make check` before push to run both.

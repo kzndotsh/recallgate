@@ -65,6 +65,22 @@ Result.
 
 - `prompt_ids` array of strings (`ItemId` values)
 
+Lock clients call `gate_submit_choice` on the daemon socket after the user picks an answer. That method is for the lock binary only, not MCP.
+
+### gate_submit_choice
+
+Lock backend only. Params.
+
+- `chosen_index` integer 0..3
+
+Result.
+
+- `correct` boolean
+
+Errors.
+
+- `not_locked` when the gate is not in `locked` phase
+
 ## MCP
 
 Binary name `recallgate-mcp`. Stdio only in the first MCP PR.
