@@ -1,6 +1,6 @@
 [package]
 name = "recallgate-core"
-description = "Recall Gate domain types, scheduling, and persistence"
+description = "Recall Gate domain types (gate, deck, MCQ, cadence)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,15 @@ publish = false
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+rand = "0.8.5"
+uuid = { version = "=1.11.0", features = ["v4"] }
+
+[dev-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+rand = "0.8.5"
 
 [lints]
 workspace = true

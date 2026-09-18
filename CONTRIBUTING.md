@@ -10,6 +10,10 @@ Thanks for helping build Recall Gate. Setup lives in [docs/developing.md](docs/d
 2. Run **`make check`** (format, clippy, tests). CI runs the same on Ubuntu.
 3. Read the specs your change touches: [domain](docs/domain.md), [protocol](docs/protocol.md), [platforms](docs/platforms.md).
 
+### Tests in `crates/core`
+
+Put behavioral tests in **`crates/core/tests/*.rs`** (integration tests against the public `recallgate_core` API). Keep `src/` free of `#[cfg(test)]` blocks unless a test must reach private items.
+
 ## PR scope
 
 The implementation stack in [docs/plan.md](docs/plan.md) defines crate boundaries. Keep diffs inside one PR’s crate unless the plan explicitly stacks work.
