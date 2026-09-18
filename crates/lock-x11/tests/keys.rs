@@ -1,4 +1,10 @@
-use recallgate_lock_x11::keys::choice_index_from_name;
+use recallgate_lock_x11::keys::{choice_from_keysym, choice_index_from_name};
+
+#[test]
+fn maps_digit_keysyms() {
+    assert_eq!(choice_from_keysym(0x0031), Some(0));
+    assert_eq!(choice_from_keysym(0xffb4), Some(3));
+}
 
 #[test]
 fn maps_digit_keys_one_through_four() {
