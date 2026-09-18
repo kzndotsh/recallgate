@@ -5,9 +5,11 @@ mod cadence;
 mod gate;
 mod ids;
 mod item;
+mod store;
 
 pub use abort::Abort;
 pub use cadence::GateCadence;
 pub use gate::{CooldownState, GateError, GatePhase, GateState, LockedState};
 pub use ids::{GateId, IdError, ItemId};
 pub use item::{Answer, ChoiceIndex, Deck, Item, ItemError, McqChoices};
+pub use store::{Store, StoreError};

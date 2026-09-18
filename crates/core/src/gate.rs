@@ -52,6 +52,10 @@ impl GateState {
         Self { phase: GatePhase::Idle }
     }
 
+    pub fn from_phase(phase: GatePhase) -> Self {
+        Self { phase }
+    }
+
     pub fn phase(&self) -> &GatePhase {
         &self.phase
     }
