@@ -12,7 +12,8 @@ use crate::gate::{CooldownState, GateError, GatePhase, GateState, LockedState};
 use crate::ids::{GateId, ItemId};
 use crate::item::{Answer, ChoiceIndex, Item, McqChoices};
 
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
+const DEFAULT_COOLDOWN_MS: i64 = 60_000;
 
 const GATE_ROW_ID: i32 = 1;
 const SETTINGS_ROW_ID: i32 = 1;
@@ -32,7 +33,7 @@ impl fmt::Display for StoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CorruptDatabase => write!(f, "database is corrupt or not a recallgate store"),
-            Self::Gate(err) => write!(f, "{err:?}"),
+            Self::Gate(err) => write!(f, "{err}"),
             Self::InvalidPrompt(msg) => write!(f, "{msg}"),
             Self::Item(err) => write!(f, "{err:?}"),
             Self::ItemMissing => write!(f, "item not found in deck"),
@@ -196,24 +197,44 @@ impl Store {
     }
 
     pub fn set_gate(&mut self, state: &GateState) -> Result<(), StoreError> {
-        let (phase, gate_id, item_id, started_at, until) = encode_gate(state.phase())?;
-        self.conn.execute(
-            "UPDATE gate_singleton
-             SET phase = ?2, gate_id = ?3, item_id = ?4, started_at = ?5, until = ?6
-             WHERE id = ?1",
-            params![GATE_ROW_ID, phase, gate_id, item_id, started_at, until],
-        )?;
-        Ok(())
+        persist_gate(&self.conn, state)
     }
 
     pub fn begin_lock(&mut self, locked: LockedState) -> Result<(), StoreError> {
         self.ensure_lock_item(locked.item_id)?;
         let mut state = self.gate()?;
         state.begin_lock(locked)?;
-        self.set_gate(&state)
+        persist_gate(&self.conn, &state)
+    }
+
+    pub fn unlock_to_idle(&mut self) -> Result<(), StoreError> {
+        let mut state = self.gate()?;
+        state.unlock_to_idle()?;
+        persist_gate(&self.conn, &state)?;
+        self.set_last_unlock_at(Utc::now())
+    }
+
+    pub fn begin_cooldown(&mut self, cooldown: CooldownState) -> Result<(), StoreError> {
+        let mut state = self.gate()?;
+        state.begin_cooldown(cooldown)?;
+        persist_gate(&self.conn, &state)
+    }
+
+    pub fn finish_cooldown_begin_lock(&mut self, locked: LockedState) -> Result<(), StoreError> {
+        self.ensure_lock_item(locked.item_id)?;
+        let mut state = self.gate()?;
+        state.finish_cooldown_begin_lock(locked)?;
+        persist_gate(&self.conn, &state)
     }
 
     pub fn append_answer(&mut self, answer: &Answer) -> Result<(), StoreError> {
+        match self.gate()?.phase() {
+            GatePhase::Locked(locked) if locked.item_id == answer.item_id() => {}
+            GatePhase::Locked(_) => return Err(StoreError::ItemMissing),
+            GatePhase::Idle | GatePhase::Cooldown(_) => {
+                return Err(StoreError::Gate(GateError::NotLocked));
+            }
+        }
         self.conn.execute(
             "INSERT INTO answers (item_id, chosen_index, correct, answered_at)
              VALUES (?1, ?2, ?3, ?4)",
@@ -247,6 +268,12 @@ impl Store {
         Ok(count as u64)
     }
 
+    pub fn abort_count(&self) -> Result<u64, StoreError> {
+        let count: i64 =
+            self.conn.query_row("SELECT COUNT(*) FROM aborts", [], |row| row.get(0))?;
+        Ok(count as u64)
+    }
+
     pub fn cadence(&self) -> Result<GateCadence, StoreError> {
         let ms: i64 = self.conn.query_row(
             "SELECT lock_interval_ms FROM settings WHERE id = ?1",
@@ -269,6 +296,49 @@ impl Store {
         Ok(())
     }
 
+    pub fn cooldown_duration(&self) -> Result<Duration, StoreError> {
+        let ms: i64 = self.conn.query_row(
+            "SELECT cooldown_duration_ms FROM settings WHERE id = ?1",
+            params![SETTINGS_ROW_ID],
+            |row| row.get(0),
+        )?;
+        if ms < 0 {
+            return Err(StoreError::CorruptDatabase);
+        }
+        Ok(Duration::from_millis(ms as u64))
+    }
+
+    pub fn set_cooldown_duration(&mut self, duration: Duration) -> Result<(), StoreError> {
+        let ms = i64::try_from(duration.as_millis()).map_err(|_| StoreError::CorruptDatabase)?;
+        self.conn.execute(
+            "UPDATE settings SET cooldown_duration_ms = ?2 WHERE id = ?1",
+            params![SETTINGS_ROW_ID, ms],
+        )?;
+        Ok(())
+    }
+
+    pub fn last_unlock_at(&self) -> Result<Option<DateTime<Utc>>, StoreError> {
+        let value: Option<String> = self.conn.query_row(
+            "SELECT last_unlock_at FROM settings WHERE id = ?1",
+            params![SETTINGS_ROW_ID],
+            |row| row.get(0),
+        )?;
+        match value {
+            None => Ok(None),
+            Some(text) => DateTime::parse_from_rfc3339(&text)
+                .map(|dt| Some(dt.with_timezone(&Utc)))
+                .map_err(|_| StoreError::CorruptDatabase),
+        }
+    }
+
+    pub fn set_last_unlock_at(&mut self, at: DateTime<Utc>) -> Result<(), StoreError> {
+        self.conn.execute(
+            "UPDATE settings SET last_unlock_at = ?2 WHERE id = ?1",
+            params![SETTINGS_ROW_ID, at.to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
     fn ensure_lock_item(&self, item_id: ItemId) -> Result<(), StoreError> {
         let Some(item) = self.item(item_id)? else {
             return Err(StoreError::ItemMissing);
@@ -282,58 +352,78 @@ impl Store {
     fn migrate(&self) -> Result<(), StoreError> {
         let version: i32 =
             self.conn.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap_or(0);
-        if version >= SCHEMA_VERSION {
-            return ensure_schema(&self.conn);
+        if version == 0 {
+            self.conn.execute_batch(&format!(
+                "
+                CREATE TABLE items (
+                  id BLOB PRIMARY KEY NOT NULL,
+                  stem TEXT NOT NULL,
+                  choices_json TEXT NOT NULL,
+                  correct_index INTEGER NOT NULL CHECK (correct_index BETWEEN 0 AND 3),
+                  suspended INTEGER NOT NULL CHECK (suspended IN (0, 1)),
+                  external_ref TEXT
+                );
+
+                CREATE TABLE gate_singleton (
+                  id INTEGER PRIMARY KEY CHECK (id = 1),
+                  phase TEXT NOT NULL CHECK (phase IN ('idle', 'locked', 'cooldown')),
+                  gate_id BLOB,
+                  item_id BLOB,
+                  started_at TEXT,
+                  until TEXT
+                );
+
+                INSERT INTO gate_singleton (id, phase, gate_id, item_id, started_at, until)
+                VALUES (1, 'idle', NULL, NULL, NULL, NULL);
+
+                CREATE TABLE answers (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  item_id BLOB NOT NULL,
+                  chosen_index INTEGER NOT NULL,
+                  correct INTEGER NOT NULL,
+                  answered_at TEXT NOT NULL
+                );
+
+                CREATE TABLE aborts (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  gate_id BLOB NOT NULL,
+                  method TEXT NOT NULL,
+                  at TEXT NOT NULL,
+                  cost_paid INTEGER NOT NULL
+                );
+
+                CREATE TABLE settings (
+                  id INTEGER PRIMARY KEY CHECK (id = 1),
+                  lock_interval_ms INTEGER NOT NULL,
+                  last_unlock_at TEXT,
+                  cooldown_duration_ms INTEGER NOT NULL
+                );
+
+                INSERT INTO settings (id, lock_interval_ms, last_unlock_at, cooldown_duration_ms)
+                VALUES (1, 0, NULL, {DEFAULT_COOLDOWN_MS});
+
+                PRAGMA user_version = {SCHEMA_VERSION};
+                "
+            ))?;
+        } else if version == 1 {
+            let settings: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'settings'",
+                [],
+                |row| row.get(0),
+            )?;
+            if settings == 0 {
+                return Err(StoreError::CorruptDatabase);
+            }
+            self.conn.execute_batch(&format!(
+                "
+                ALTER TABLE settings ADD COLUMN last_unlock_at TEXT;
+                ALTER TABLE settings ADD COLUMN cooldown_duration_ms INTEGER NOT NULL DEFAULT {DEFAULT_COOLDOWN_MS};
+                PRAGMA user_version = {SCHEMA_VERSION};
+                "
+            ))?;
+        } else if version > SCHEMA_VERSION {
+            return Err(StoreError::CorruptDatabase);
         }
-        self.conn.execute_batch(
-            "
-            CREATE TABLE items (
-              id BLOB PRIMARY KEY NOT NULL,
-              stem TEXT NOT NULL,
-              choices_json TEXT NOT NULL,
-              correct_index INTEGER NOT NULL CHECK (correct_index BETWEEN 0 AND 3),
-              suspended INTEGER NOT NULL CHECK (suspended IN (0, 1)),
-              external_ref TEXT
-            );
-
-            CREATE TABLE gate_singleton (
-              id INTEGER PRIMARY KEY CHECK (id = 1),
-              phase TEXT NOT NULL CHECK (phase IN ('idle', 'locked', 'cooldown')),
-              gate_id BLOB,
-              item_id BLOB,
-              started_at TEXT,
-              until TEXT
-            );
-
-            INSERT INTO gate_singleton (id, phase, gate_id, item_id, started_at, until)
-            VALUES (1, 'idle', NULL, NULL, NULL, NULL);
-
-            CREATE TABLE answers (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              item_id BLOB NOT NULL,
-              chosen_index INTEGER NOT NULL,
-              correct INTEGER NOT NULL,
-              answered_at TEXT NOT NULL
-            );
-
-            CREATE TABLE aborts (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              gate_id BLOB NOT NULL,
-              method TEXT NOT NULL,
-              at TEXT NOT NULL,
-              cost_paid INTEGER NOT NULL
-            );
-
-            CREATE TABLE settings (
-              id INTEGER PRIMARY KEY CHECK (id = 1),
-              lock_interval_ms INTEGER NOT NULL
-            );
-
-            INSERT INTO settings (id, lock_interval_ms) VALUES (1, 0);
-
-            PRAGMA user_version = 1;
-            ",
-        )?;
         ensure_schema(&self.conn)
     }
 }
@@ -361,6 +451,30 @@ fn ensure_schema(conn: &Connection) -> Result<(), StoreError> {
     if settings_rows != 1 {
         return Err(StoreError::CorruptDatabase);
     }
+    let cooldown_col: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('settings') WHERE name = 'cooldown_duration_ms'",
+        [],
+        |row| row.get(0),
+    )?;
+    let unlock_col: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('settings') WHERE name = 'last_unlock_at'",
+        [],
+        |row| row.get(0),
+    )?;
+    if cooldown_col != 1 || unlock_col != 1 {
+        return Err(StoreError::CorruptDatabase);
+    }
+    Ok(())
+}
+
+fn persist_gate(conn: &Connection, state: &GateState) -> Result<(), StoreError> {
+    let (phase, gate_id, item_id, started_at, until) = encode_gate(state.phase())?;
+    conn.execute(
+        "UPDATE gate_singleton
+         SET phase = ?2, gate_id = ?3, item_id = ?4, started_at = ?5, until = ?6
+         WHERE id = ?1",
+        params![GATE_ROW_ID, phase, gate_id, item_id, started_at, until],
+    )?;
     Ok(())
 }
 

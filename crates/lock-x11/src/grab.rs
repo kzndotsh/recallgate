@@ -1,5 +1,3 @@
-#![cfg(feature = "x11")]
-
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
@@ -14,7 +12,8 @@ use x11rb::rust_connection::RustConnection;
 use xkeysym::{KeyCode, RawKeysym};
 
 use crate::error::{keyboard_grab_error, GrabError};
-use crate::ipc::ShowPrompt;
+use crate::hatch::{HatchOutcome, HatchTracker};
+use crate::ipc::{IncomingShow, ShowAck, ShowPrompt};
 use crate::keys;
 use crate::paths;
 
@@ -41,7 +40,13 @@ struct KeyboardMapping {
     keysyms: Vec<RawKeysym>,
 }
 
-pub fn run(prompt_rx: Receiver<ShowPrompt>) -> Result<(), GrabError> {
+const XK_ESCAPE: u32 = 0xff1b;
+const XK_RETURN: u32 = 0xff0d;
+const XK_KP_ENTER: u32 = 0xff8d;
+const X_SHIFT: u16 = 1;
+const X_CONTROL: u16 = 4;
+
+pub fn run(prompt_rx: Receiver<IncomingShow>) -> Result<(), GrabError> {
     let (conn, screen_num) =
         RustConnection::connect(None).map_err(|err| GrabError::Display(err.to_string()))?;
     let screen = &conn.setup().roots[screen_num];
@@ -54,10 +59,23 @@ pub fn run(prompt_rx: Receiver<ShowPrompt>) -> Result<(), GrabError> {
     let keyboard = load_keyboard(&conn)?;
 
     loop {
-        let prompt = prompt_rx.recv().map_err(|err| GrabError::Display(err.to_string()))?;
+        let incoming = prompt_rx.recv().map_err(|err| GrabError::Display(err.to_string()))?;
+        let prompt = incoming.prompt;
         let monitors = monitor_rects(&conn, root, screen.width_in_pixels, screen.height_in_pixels)?;
         let surfaces = create_surfaces(&conn, screen, root, font, black, white, &monitors)?;
-        grab_root(&conn, root)?;
+        if let Err(err) = grab_root(&conn, root) {
+            let _ = incoming.ack.send(if err == GrabError::GrabBusy {
+                ShowAck::GrabBusy
+            } else {
+                ShowAck::Unsupported
+            });
+            destroy_surfaces(&conn, &surfaces)?;
+            if err == GrabError::GrabBusy {
+                return Err(err);
+            }
+            continue;
+        }
+        let _ = incoming.ack.send(ShowAck::Ok);
         for surface in &surfaces {
             draw_prompt(&conn, surface, white, &prompt, None)?;
         }
@@ -65,6 +83,10 @@ pub fn run(prompt_rx: Receiver<ShowPrompt>) -> Result<(), GrabError> {
 
         let mut answered = false;
         let mut unlock_at: Option<Instant> = None;
+        let mut hatch = HatchTracker::new();
+        let mut escape_held = false;
+        let mut last_ctrl = false;
+        let mut last_shift = false;
 
         loop {
             if let Some(deadline) = unlock_at {
@@ -74,36 +96,79 @@ pub fn run(prompt_rx: Receiver<ShowPrompt>) -> Result<(), GrabError> {
             }
 
             while let Some(event) = conn.poll_for_event().map_err(map_conn_err)? {
-                if let Event::KeyPress(key_event) = event {
-                    if answered {
-                        continue;
-                    }
-                    let Some(choice) = choice_from_keycode(&keyboard, key_event.detail) else {
-                        continue;
-                    };
-                    answered = true;
-                    let wrong = choice != prompt.correct_index;
-                    if wrong {
-                        let flash = prompt
-                            .choices
-                            .get(prompt.correct_index as usize)
-                            .map(|answer| format!("Correct: {answer}"));
-                        for surface in &surfaces {
-                            draw_prompt(&conn, surface, white, &prompt, flash.as_deref())?;
+                match event {
+                    Event::KeyPress(key_event) => {
+                        let (ctrl, shift) = x_mods(u16::from(key_event.state));
+                        last_ctrl = ctrl;
+                        last_shift = shift;
+                        let keysym = raw_keysym(&keyboard, key_event.detail);
+                        if keysym == Some(XK_ESCAPE) {
+                            escape_held = true;
                         }
-                        conn.flush().map_err(map_conn_err)?;
-                    }
-                    match paths::submit_choice(choice) {
-                        Ok(_) if wrong => {
-                            unlock_at = Some(Instant::now() + WRONG_ANSWER_FLASH);
+                        let hatch_out = hatch.on_chord(ctrl, shift, escape_held, Instant::now());
+                        if hatch_out == HatchOutcome::Confirming || hatch.is_confirming() {
+                            let text_out = match keysym {
+                                Some(XK_RETURN | XK_KP_ENTER) => hatch.on_text('\n'),
+                                Some(sym) => match char_from_keysym(sym) {
+                                    Some(ch) => hatch.on_text(ch),
+                                    None => HatchOutcome::Confirming,
+                                },
+                                None => HatchOutcome::Confirming,
+                            };
+                            if text_out == HatchOutcome::Completed {
+                                if let Err(err) = paths::abort_hatch() {
+                                    eprintln!("abort failed: {err}");
+                                } else {
+                                    answered = true;
+                                    break;
+                                }
+                            }
+                            continue;
                         }
-                        Ok(_) => break,
-                        Err(err) => {
-                            eprintln!("submit failed: {err}");
-                            answered = false;
+                        if answered {
+                            continue;
+                        }
+                        let Some(choice) = choice_from_keycode(&keyboard, key_event.detail) else {
+                            continue;
+                        };
+                        answered = true;
+                        let wrong = choice != prompt.correct_index;
+                        if wrong {
+                            let flash = prompt
+                                .choices
+                                .get(prompt.correct_index as usize)
+                                .map(|answer| format!("Correct: {answer}"));
+                            for surface in &surfaces {
+                                draw_prompt(&conn, surface, white, &prompt, flash.as_deref())?;
+                            }
+                            conn.flush().map_err(map_conn_err)?;
+                        }
+                        match paths::submit_choice(choice) {
+                            Ok(_) if wrong => {
+                                unlock_at = Some(Instant::now() + WRONG_ANSWER_FLASH);
+                            }
+                            Ok(_) => break,
+                            Err(err) => {
+                                eprintln!("submit failed: {err}");
+                                answered = false;
+                            }
                         }
                     }
+                    Event::KeyRelease(key_event) => {
+                        let (ctrl, shift) = x_mods(u16::from(key_event.state));
+                        last_ctrl = ctrl;
+                        last_shift = shift;
+                        if raw_keysym(&keyboard, key_event.detail) == Some(XK_ESCAPE) {
+                            escape_held = false;
+                        }
+                        hatch.on_chord(ctrl, shift, escape_held, Instant::now());
+                    }
+                    _ => {}
                 }
+            }
+
+            if escape_held {
+                let _ = hatch.on_chord(last_ctrl, last_shift, true, Instant::now());
             }
 
             if !answered {
@@ -121,6 +186,25 @@ pub fn run(prompt_rx: Receiver<ShowPrompt>) -> Result<(), GrabError> {
     }
 }
 
+fn x_mods(state: u16) -> (bool, bool) {
+    (state & X_CONTROL != 0, state & X_SHIFT != 0)
+}
+
+fn raw_keysym(mapping: &KeyboardMapping, keycode: u8) -> Option<u32> {
+    xkeysym::keysym(
+        KeyCode::new(keycode.into()),
+        0,
+        KeyCode::new(mapping.min_keycode.into()),
+        mapping.keysyms_per_keycode,
+        &mapping.keysyms,
+    )
+    .map(u32::from)
+}
+
+fn char_from_keysym(keysym: u32) -> Option<char> {
+    char::from_u32(keysym).filter(char::is_ascii_alphabetic)
+}
+
 fn map_conn_err<E: std::fmt::Display>(err: E) -> GrabError {
     GrabError::Display(err.to_string())
 }
@@ -136,7 +220,7 @@ fn load_keyboard(conn: &RustConnection) -> Result<KeyboardMapping, GrabError> {
     Ok(KeyboardMapping {
         min_keycode: setup.min_keycode,
         keysyms_per_keycode: reply.keysyms_per_keycode,
-        keysyms: reply.keysyms.iter().copied().collect(),
+        keysyms: reply.keysyms.to_vec(),
     })
 }
 
@@ -160,8 +244,8 @@ fn monitor_rects(
         .monitors
         .into_iter()
         .map(|monitor| MonitorRect {
-            x: monitor.x as i16,
-            y: monitor.y as i16,
+            x: monitor.x,
+            y: monitor.y,
             width: monitor.width,
             height: monitor.height,
         })
@@ -194,7 +278,7 @@ fn create_surfaces(
             screen.root_visual,
             &CreateWindowAux::new()
                 .background_pixel(black)
-                .event_mask(EventMask::KEY_PRESS)
+                .event_mask(EventMask::KEY_PRESS | EventMask::KEY_RELEASE)
                 .override_redirect(1),
         )
         .map_err(map_conn_err)?;

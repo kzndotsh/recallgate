@@ -2,6 +2,8 @@
 
 Recall Gate taxes continuing a desktop session with one multiple-choice card. The operator and later owners run this checklist. A freeze ends only by a rating or a paid abort. Stack order is `pr-core`, `pr-store`, `pr-daemon`, then `pr-wayland` and `pr-x11` in parallel, then `pr-mcp`.
 
+After that stack landed, abort IPC, helper ack, cooldown relock, and cadence persistence are a follow-up PR on `main` (not a seventh crate). Nested Sway/Xephyr live-lane screenshots stay with the operator; this file does not treat those boxes as checked.
+
 ## How to read this
 
 One box is one unit of work. Every box names the evidence that checks it. A nested box is a sub-step of the box above it. Check a box only when its evidence exists, a file, a log line, a screenshot, a test run, or a SHA. The body is a how-to. The appendices explain and record.

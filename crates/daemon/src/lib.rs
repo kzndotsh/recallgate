@@ -1,3 +1,4 @@
+pub mod notify;
 pub mod rpc;
 pub mod wayland;
 pub mod x11;

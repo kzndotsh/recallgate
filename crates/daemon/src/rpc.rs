@@ -1,14 +1,19 @@
+use std::sync::Arc;
 use std::time::Instant;
 
-use chrono::Utc;
+use chrono::{Duration as ChronoDuration, Utc};
 use rand::seq::SliceRandom;
 use recallgate_core::{
-    ChoiceIndex, GateError, GateId, GatePhase, ItemId, LockedState, Store, StoreError,
+    Abort, ChoiceIndex, CooldownState, GateError, GateId, GatePhase, ItemId, LockedState, Store,
+    StoreError,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::notify;
+
 const JSONRPC_VERSION: &str = "2.0";
+const ABORT_COST: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LockCapability {
@@ -27,10 +32,13 @@ impl LockCapability {
     }
 }
 
+pub type NotifyFn = Arc<dyn Fn(&str, &[String; 4], u8, &str) -> Result<(), RpcError> + Send + Sync>;
+
 pub struct DaemonState {
     store: Store,
     last_unlock: Option<Instant>,
     capability: LockCapability,
+    notify: NotifyFn,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,20 +52,23 @@ pub enum RpcError {
     EmptyDeck,
     CadenceActive,
     NotLocked,
+    GrabBusy,
+    IllegalTransition,
     Store(String),
 }
 
 impl DaemonState {
     pub fn new(store: Store, capability: LockCapability) -> Self {
-        Self { store, last_unlock: None, capability }
+        Self::with_notify(store, capability, Arc::new(notify::live_notify))
+    }
+
+    pub fn with_notify(store: Store, capability: LockCapability, notify: NotifyFn) -> Self {
+        let last_unlock = seed_last_unlock(&store);
+        Self { store, last_unlock, capability, notify }
     }
 
     pub fn store_mut(&mut self) -> &mut Store {
         &mut self.store
-    }
-
-    pub fn note_unlock(&mut self) {
-        self.last_unlock = Some(Instant::now());
     }
 
     pub fn handle_line(&mut self, line: &str) -> String {
@@ -83,6 +94,28 @@ impl DaemonState {
         }
     }
 
+    pub fn tick_cooldown(&mut self) -> Result<(), RpcError> {
+        let GatePhase::Cooldown(cooldown) = self.store.gate().map_err(map_store)?.phase().clone()
+        else {
+            return Ok(());
+        };
+        if cooldown.until > Utc::now() {
+            return Ok(());
+        }
+        let capability = self.active_capability();
+        if capability == LockCapability::None {
+            return Ok(());
+        }
+        let item_id = self.resolve_lock_item(None)?;
+        let item = self.store.item(item_id).map_err(map_store)?.ok_or(RpcError::EmptyDeck)?;
+        let gate_id = GateId::new();
+        let choices_arr = item_choices(&item)?;
+        (self.notify)(&item.stem, &choices_arr, item.correct_index.index(), &gate_id.to_string())?;
+        let locked = LockedState::new(gate_id, item_id, Utc::now());
+        self.store.finish_cooldown_begin_lock(locked).map_err(map_store)?;
+        Ok(())
+    }
+
     fn dispatch(&mut self, method: &str, params: Option<&Value>) -> Result<Value, RpcError> {
         match method {
             "gate_status" => self.gate_status(),
@@ -99,13 +132,28 @@ impl DaemonState {
                 let params = params.ok_or(RpcError::InvalidParams)?;
                 self.gate_submit_choice(params)
             }
+            "gate_abort" => {
+                let params = params.cloned().unwrap_or(Value::Null);
+                self.gate_abort(&params)
+            }
             "gate_unlock" => Err(RpcError::MethodNotFound),
             _ => Err(RpcError::MethodNotFound),
         }
     }
 
+    fn active_capability(&self) -> LockCapability {
+        let detected = notify::live_capability();
+        if detected != LockCapability::None {
+            return detected;
+        }
+        if self.capability != LockCapability::None {
+            return self.capability;
+        }
+        LockCapability::None
+    }
+
     fn gate_status(&self) -> Result<Value, RpcError> {
-        let capability = active_capability(self.capability);
+        let capability = self.active_capability();
         let state = self.store.gate().map_err(map_store)?;
         let (phase, session_id, cooldown_until) = match state.phase() {
             GatePhase::Idle => ("idle", None, None),
@@ -136,9 +184,18 @@ impl DaemonState {
     }
 
     fn gate_lock(&mut self, params: &Value) -> Result<Value, RpcError> {
-        let capability = active_capability(self.capability);
+        let capability = self.active_capability();
         if capability == LockCapability::None {
             return Err(RpcError::NoLockBackend);
+        }
+
+        match self.store.gate().map_err(map_store)?.phase() {
+            GatePhase::Locked(locked) => {
+                let locked = locked.clone();
+                return self.reshow_locked(&locked);
+            }
+            GatePhase::Cooldown(_) => return Err(RpcError::IllegalTransition),
+            GatePhase::Idle => {}
         }
 
         let cadence = self.store.cadence().map_err(map_store)?;
@@ -146,43 +203,34 @@ impl DaemonState {
             return Err(RpcError::CadenceActive);
         }
 
-        match self.store.gate().map_err(map_store)?.phase() {
-            GatePhase::Locked(_) => return Err(RpcError::AlreadyLocked),
-            GatePhase::Idle | GatePhase::Cooldown(_) => {}
-        }
-
         let lock_params = if params.is_null() {
-            GateLockParams { prompt_id: None }
+            GateLockParams { prompt_id: None, reason: None }
         } else {
             serde_json::from_value(params.clone()).map_err(|_| RpcError::InvalidParams)?
         };
+        let _reason = lock_params.reason;
 
         let item_id = self.resolve_lock_item(lock_params.prompt_id.as_deref())?;
         let item = self.store.item(item_id).map_err(map_store)?.ok_or(RpcError::EmptyDeck)?;
-
         let gate_id = GateId::new();
-        let choices: Vec<String> = item.choices.as_slice().to_vec();
-        let choices_arr: [String; 4] =
-            choices.try_into().map_err(|_| RpcError::Store("bad choices".into()))?;
-        if capability == LockCapability::SessionLock {
-            crate::wayland::notify_show(&item.stem, &choices_arr, item.correct_index.index())
-                .map_err(RpcError::Store)?;
-        } else if capability == LockCapability::X11Grab {
-            crate::x11::notify_show(&item.stem, &choices_arr, item.correct_index.index())
-                .map_err(RpcError::Store)?;
-        }
-
+        let choices_arr = item_choices(&item)?;
+        (self.notify)(&item.stem, &choices_arr, item.correct_index.index(), &gate_id.to_string())?;
         let locked = LockedState::new(gate_id, item_id, Utc::now());
         self.store.begin_lock(locked).map_err(map_store)?;
+        Ok(lock_result(&gate_id, &item.stem, item.choices.as_slice()))
+    }
 
-        let choices_refs: Vec<&str> = item.choices.as_slice().iter().map(String::as_str).collect();
-        Ok(json!({
-            "session_id": gate_id.to_string(),
-            "prompt": {
-                "stem": item.stem,
-                "choices": choices_refs,
-            }
-        }))
+    fn reshow_locked(&self, locked: &LockedState) -> Result<Value, RpcError> {
+        let item =
+            self.store.item(locked.item_id).map_err(map_store)?.ok_or(RpcError::NotLocked)?;
+        let choices_arr = item_choices(&item)?;
+        (self.notify)(
+            &item.stem,
+            &choices_arr,
+            item.correct_index.index(),
+            &locked.gate_id.to_string(),
+        )?;
+        Ok(lock_result(&locked.gate_id, &item.stem, item.choices.as_slice()))
     }
 
     fn gate_submit_choice(&mut self, params: &Value) -> Result<Value, RpcError> {
@@ -193,7 +241,7 @@ impl DaemonState {
             .ok_or(RpcError::InvalidParams)?;
         let choice = ChoiceIndex::try_new(chosen).map_err(|_| RpcError::InvalidParams)?;
 
-        let mut gate = self.store.gate().map_err(map_store)?;
+        let gate = self.store.gate().map_err(map_store)?;
         let locked = match gate.phase() {
             GatePhase::Locked(locked) => locked.clone(),
             GatePhase::Idle | GatePhase::Cooldown(_) => return Err(RpcError::NotLocked),
@@ -203,10 +251,32 @@ impl DaemonState {
         let answer = item.answer_for_choice(choice, Utc::now());
         let correct = answer.correct();
         self.store.append_answer(&answer).map_err(map_store)?;
-        gate.unlock_to_idle().map_err(|err| map_store(StoreError::Gate(err)))?;
-        self.store.set_gate(&gate).map_err(map_store)?;
-        self.note_unlock();
+        self.store.unlock_to_idle().map_err(map_store)?;
+        self.last_unlock = Some(Instant::now());
         Ok(json!({ "correct": correct }))
+    }
+
+    fn gate_abort(&mut self, params: &Value) -> Result<Value, RpcError> {
+        let abort_params = if params.is_null() {
+            GateAbortParams { method: None }
+        } else {
+            serde_json::from_value(params.clone()).map_err(|_| RpcError::InvalidParams)?
+        };
+        let method = abort_params.method.unwrap_or_else(|| "hatch".into());
+        let gate = self.store.gate().map_err(map_store)?;
+        let locked = match gate.phase() {
+            GatePhase::Locked(locked) => locked.clone(),
+            GatePhase::Idle | GatePhase::Cooldown(_) => return Err(RpcError::NotLocked),
+        };
+        let now = Utc::now();
+        self.store
+            .append_abort(&Abort::new(locked.gate_id, method, now, ABORT_COST))
+            .map_err(map_store)?;
+        let duration = self.store.cooldown_duration().map_err(map_store)?;
+        let until = now
+            + ChronoDuration::from_std(duration).map_err(|err| RpcError::Store(err.to_string()))?;
+        self.store.begin_cooldown(CooldownState::new(locked.gate_id, until)).map_err(map_store)?;
+        Ok(json!({ "cooldown_until": until.to_rfc3339() }))
     }
 
     fn resolve_lock_item(&self, prompt_id: Option<&str>) -> Result<ItemId, RpcError> {
@@ -227,6 +297,31 @@ impl DaemonState {
     }
 }
 
+fn seed_last_unlock(store: &Store) -> Option<Instant> {
+    let last = store.last_unlock_at().ok()??;
+    let cadence = store.cadence().ok()?;
+    let elapsed = Utc::now().signed_duration_since(last).to_std().ok()?;
+    if elapsed >= cadence.lock_interval {
+        return None;
+    }
+    Instant::now().checked_sub(elapsed)
+}
+
+fn item_choices(item: &recallgate_core::Item) -> Result<[String; 4], RpcError> {
+    item.choices.as_slice().to_vec().try_into().map_err(|_| RpcError::Store("bad choices".into()))
+}
+
+fn lock_result(gate_id: &GateId, stem: &str, choices: &[String]) -> Value {
+    let choices_refs: Vec<&str> = choices.iter().map(String::as_str).collect();
+    json!({
+        "session_id": gate_id.to_string(),
+        "prompt": {
+            "stem": stem,
+            "choices": choices_refs,
+        }
+    })
+}
+
 #[derive(Debug, Deserialize)]
 struct JsonRpcRequest {
     jsonrpc: String,
@@ -238,6 +333,12 @@ struct JsonRpcRequest {
 #[derive(Debug, Deserialize)]
 struct GateLockParams {
     prompt_id: Option<String>,
+    reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GateAbortParams {
+    method: Option<String>,
 }
 
 fn success_response(id: Value, result: Value) -> String {
@@ -260,6 +361,8 @@ fn error_response(id: Value, err: RpcError) -> String {
         RpcError::EmptyDeck => (-32000, "empty_deck".to_string()),
         RpcError::CadenceActive => (-32000, "cadence_active".to_string()),
         RpcError::NotLocked => (-32000, "not_locked".to_string()),
+        RpcError::GrabBusy => (-32000, "grab_busy".to_string()),
+        RpcError::IllegalTransition => (-32000, "illegal_transition".to_string()),
         RpcError::Store(msg) => (-32000, msg.clone()),
     };
     serde_json::to_string(&json!({
@@ -274,20 +377,9 @@ fn map_store(err: StoreError) -> RpcError {
     match err {
         StoreError::Gate(GateError::AlreadyLocked) => RpcError::AlreadyLocked,
         StoreError::Gate(GateError::NotLocked) => RpcError::NotLocked,
+        StoreError::Gate(GateError::IllegalTransition) => RpcError::IllegalTransition,
         StoreError::InvalidPrompt(_) | StoreError::Item(_) => RpcError::InvalidParams,
         StoreError::ItemMissing | StoreError::ItemSuspended => RpcError::InvalidParams,
         other => RpcError::Store(other.to_string()),
     }
-}
-
-fn active_capability(fallback: LockCapability) -> LockCapability {
-    let wayland = crate::wayland::detect_capability();
-    if wayland != LockCapability::None {
-        return wayland;
-    }
-    let x11 = crate::x11::detect_capability();
-    if x11 != LockCapability::None {
-        return x11;
-    }
-    fallback
 }

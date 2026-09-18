@@ -28,7 +28,14 @@ Errors.
 - `already_locked`
 - `empty_deck` when there is no non-suspended item to show
 - `cadence_active` when `lock_interval` has not elapsed since the last unlock
-- `grab_busy` on X11 when another client holds the grab
+- `grab_busy` when the lock helper reports it could not grab (X11 already-grabbed, or equivalent)
+- `illegal_transition` when the store rejects the phase change
+
+If the gate is already `locked` and a helper is bound, `gate_lock` re-sends the current item to the helper and returns the existing `session_id`. It does not return `already_locked` in that case. If the helper is missing, the error is `already_locked` or `no_lock_backend`.
+
+`reason` is accepted (`idle`, `manual`, or `rpc`) and ignored for v0 scheduling.
+
+The daemon does not persist `Locked` until the helper acks show (see [Helper show IPC](#helper-show-ipc)).
 
 ### gate_status
 
@@ -81,11 +88,32 @@ Errors.
 
 - `not_locked` when the gate is not in `locked` phase
 
+### gate_abort
+
+Lock backend only. MCP does not list this tool. Params object may be empty or `{ "method": "hatch" }`. If `method` is omitted it is stored as `hatch`.
+
+Effects: append an abort event, enter cooldown (`until = now + cooldown_duration_ms` from settings, default 60s). No `Answer` row.
+
+Result.
+
+- `cooldown_until` RFC3339 string
+
+The locker must ungrab and stay running. The daemon timer later calls `finish_cooldown_begin_lock` with a new item and sends show again.
+
+## Helper show IPC
+
+Lock helpers listen on `$XDG_RUNTIME_DIR/recallgate-wayland.sock` or `recallgate-x11.sock`.
+
+1. Daemon writes one JSON line: `stem`, `choices`, `correct_index`, `session_id`.
+2. Helper maps windows and locks/grabs.
+3. Helper writes one ack line `{ "ok": true }` or `{ "ok": false, "error": "grab_busy" | "unsupported" }`.
+4. Daemon `begin_lock` only after `ok`. Timeout 2s with no ack is `no_lock_backend`.
+
 ## MCP
 
 Binary name `recallgate-mcp`. Stdio only in the first MCP PR.
 
-Tools with the same names and schemas as the methods above. `gate_unlock` must not appear in `tools/list`.
+Tools `gate_lock`, `gate_push_prompt`, `gate_status`, and `gate_due` only. `gate_unlock`, `gate_submit_choice`, and `gate_abort` must not appear in `tools/list`.
 
 Logs write to stderr. Stdout is JSON-RPC only.
 
@@ -93,6 +121,8 @@ Resource `recallgate://session` reads the same payload as `gate_status`.
 
 ## Lock backend process
 
-The lock binary does not open SQLite. It connects to the socket. It renders `stem` and `choices`. It sends the chosen index or a completed abort sequence to the daemon. The daemon returns whether to call the platform unlock.
+The lock binary does not open SQLite. It connects to the daemon socket. It renders `stem` and `choices`. It sends `gate_submit_choice` or `gate_abort` after a completed hatch. The daemon returns whether to ungrab.
 
-Wayland unlock is `unlock_and_destroy` on the session lock object. X11 unlock is ungrab plus unmap.
+Wayland `ext-session-lock-v1` unlock must not quit the GTK process. Both lockers stay resident so cooldown relock and a later `gate_lock` can show again. Escape and Alt+F4 do not unlock.
+
+Hatch: hold `Ctrl+Shift+Escape` for 2 seconds, type `ABORT`, press Enter.

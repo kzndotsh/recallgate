@@ -6,7 +6,7 @@ Wrong answers still unlock after the correct choice flashes. Abort exists and co
 
 Recall Gate is gate-first: a local MCQ deck and scheduling support the freeze, not the other way around. Optional import from external decks is a later feature.
 
-The workspace contains specs plus a minimal `recallgate-core` crate. Implementation follows [docs/plan.md](docs/plan.md) and [docs/domain.md](docs/domain.md).
+The workspace is a Rust crate set: `recallgate-core`, `recallgate-daemon`, `recallgate-lock-wayland`, `recallgate-lock-x11`, and `recallgate-mcp`. Specs live in [docs/plan.md](docs/plan.md) and [docs/domain.md](docs/domain.md).
 
 ## Developing
 

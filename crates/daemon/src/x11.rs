@@ -1,11 +1,7 @@
 use std::env;
-use std::io::Write;
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
-use serde_json::json;
-
-use crate::rpc::LockCapability;
+use crate::rpc::{LockCapability, RpcError};
 
 pub fn detect_capability() -> LockCapability {
     if env::var("DISPLAY").is_err() {
@@ -23,15 +19,19 @@ pub fn detect_capability() -> LockCapability {
     }
 }
 
-pub fn notify_show(stem: &str, choices: &[String; 4], correct_index: u8) -> Result<(), String> {
-    let path = x11_ipc_path()?;
-    let mut stream = UnixStream::connect(&path).map_err(|err| err.to_string())?;
-    let message = json!({
-        "stem": stem,
-        "choices": choices,
-        "correct_index": correct_index,
-    });
-    writeln!(stream, "{message}").map_err(|err| err.to_string())
+pub fn notify_show(
+    stem: &str,
+    choices: &[String; 4],
+    correct_index: u8,
+    session_id: &str,
+) -> Result<(), RpcError> {
+    crate::notify::notify_show(
+        &x11_ipc_path().map_err(|_| RpcError::NoLockBackend)?,
+        stem,
+        choices,
+        correct_index,
+        session_id,
+    )
 }
 
 fn x11_ready_path() -> Result<PathBuf, String> {

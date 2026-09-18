@@ -46,3 +46,8 @@ pub fn submit_choice(chosen_index: u8) -> Result<bool, String> {
     let result = rpc_call("gate_submit_choice", json!({ "chosen_index": chosen_index }), 1)?;
     Ok(result["correct"].as_bool().unwrap_or(false))
 }
+
+pub fn abort_hatch() -> Result<(), String> {
+    rpc_call("gate_abort", json!({ "method": "hatch" }), 2)?;
+    Ok(())
+}
