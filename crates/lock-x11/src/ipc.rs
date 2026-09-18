@@ -9,6 +9,8 @@ use serde_json::json;
 
 use crate::paths;
 
+const ACK_TIMEOUT: Duration = Duration::from_secs(2);
+
 #[derive(Debug, Clone)]
 pub struct ShowPrompt {
     pub stem: String,
@@ -83,7 +85,7 @@ fn handle_client(stream: UnixStream, sender: &Sender<IncomingShow>) {
         let _ = write_ack(&mut writer, ShowAck::Unsupported);
         return;
     }
-    let ack = ack_rx.recv_timeout(Duration::from_secs(5)).unwrap_or(ShowAck::Unsupported);
+    let ack = ack_rx.recv_timeout(ACK_TIMEOUT).unwrap_or(ShowAck::Unsupported);
     let _ = write_ack(&mut writer, ack);
 }
 
