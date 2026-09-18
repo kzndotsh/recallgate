@@ -2,7 +2,9 @@ use std::time::Instant;
 
 use chrono::Utc;
 use rand::seq::SliceRandom;
-use recallgate_core::{GateError, GateId, GatePhase, ItemId, LockedState, Store, StoreError};
+use recallgate_core::{
+    ChoiceIndex, GateError, GateId, GatePhase, ItemId, LockedState, Store, StoreError,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -16,7 +18,7 @@ pub enum LockCapability {
 }
 
 impl LockCapability {
-    fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::None => "none",
             Self::SessionLock => "session_lock",
@@ -41,6 +43,7 @@ pub enum RpcError {
     AlreadyLocked,
     EmptyDeck,
     CadenceActive,
+    NotLocked,
     Store(String),
 }
 
@@ -92,12 +95,17 @@ impl DaemonState {
                 let params = params.cloned().unwrap_or(Value::Null);
                 self.gate_lock(&params)
             }
+            "gate_submit_choice" => {
+                let params = params.ok_or(RpcError::InvalidParams)?;
+                self.gate_submit_choice(params)
+            }
             "gate_unlock" => Err(RpcError::MethodNotFound),
             _ => Err(RpcError::MethodNotFound),
         }
     }
 
     fn gate_status(&self) -> Result<Value, RpcError> {
+        let capability = active_capability(self.capability);
         let state = self.store.gate().map_err(map_store)?;
         let (phase, session_id, cooldown_until) = match state.phase() {
             GatePhase::Idle => ("idle", None, None),
@@ -108,7 +116,7 @@ impl DaemonState {
         };
         Ok(json!({
             "phase": phase,
-            "capability": self.capability.as_str(),
+            "capability": capability.as_str(),
             "session_id": session_id,
             "cooldown_until": cooldown_until,
         }))
@@ -128,7 +136,8 @@ impl DaemonState {
     }
 
     fn gate_lock(&mut self, params: &Value) -> Result<Value, RpcError> {
-        if self.capability == LockCapability::None {
+        let capability = active_capability(self.capability);
+        if capability == LockCapability::None {
             return Err(RpcError::NoLockBackend);
         }
 
@@ -155,14 +164,46 @@ impl DaemonState {
         let locked = LockedState::new(gate_id, item_id, Utc::now());
         self.store.begin_lock(locked).map_err(map_store)?;
 
-        let choices: Vec<&str> = item.choices.as_slice().iter().map(String::as_str).collect();
+        let choices: Vec<String> = item.choices.as_slice().to_vec();
+        let choices_arr: [String; 4] =
+            choices.try_into().map_err(|_| RpcError::Store("bad choices".into()))?;
+        if capability == LockCapability::SessionLock {
+            crate::wayland::notify_show(&item.stem, &choices_arr, item.correct_index.index())
+                .map_err(RpcError::Store)?;
+        }
+
+        let choices_refs: Vec<&str> = item.choices.as_slice().iter().map(String::as_str).collect();
         Ok(json!({
             "session_id": gate_id.to_string(),
             "prompt": {
                 "stem": item.stem,
-                "choices": choices,
+                "choices": choices_refs,
             }
         }))
+    }
+
+    fn gate_submit_choice(&mut self, params: &Value) -> Result<Value, RpcError> {
+        let chosen = params
+            .get("chosen_index")
+            .and_then(Value::as_u64)
+            .and_then(|value| u8::try_from(value).ok())
+            .ok_or(RpcError::InvalidParams)?;
+        let choice = ChoiceIndex::try_new(chosen).map_err(|_| RpcError::InvalidParams)?;
+
+        let mut gate = self.store.gate().map_err(map_store)?;
+        let locked = match gate.phase() {
+            GatePhase::Locked(locked) => locked.clone(),
+            GatePhase::Idle | GatePhase::Cooldown(_) => return Err(RpcError::NotLocked),
+        };
+        let item =
+            self.store.item(locked.item_id).map_err(map_store)?.ok_or(RpcError::NotLocked)?;
+        let answer = item.answer_for_choice(choice, Utc::now());
+        let correct = answer.correct();
+        self.store.append_answer(&answer).map_err(map_store)?;
+        gate.unlock_to_idle().map_err(|err| map_store(StoreError::Gate(err)))?;
+        self.store.set_gate(&gate).map_err(map_store)?;
+        self.note_unlock();
+        Ok(json!({ "correct": correct }))
     }
 
     fn resolve_lock_item(&self, prompt_id: Option<&str>) -> Result<ItemId, RpcError> {
@@ -215,6 +256,7 @@ fn error_response(id: Value, err: RpcError) -> String {
         RpcError::AlreadyLocked => (-32000, "already_locked".to_string()),
         RpcError::EmptyDeck => (-32000, "empty_deck".to_string()),
         RpcError::CadenceActive => (-32000, "cadence_active".to_string()),
+        RpcError::NotLocked => (-32000, "not_locked".to_string()),
         RpcError::Store(msg) => (-32000, msg.clone()),
     };
     serde_json::to_string(&json!({
@@ -228,8 +270,18 @@ fn error_response(id: Value, err: RpcError) -> String {
 fn map_store(err: StoreError) -> RpcError {
     match err {
         StoreError::Gate(GateError::AlreadyLocked) => RpcError::AlreadyLocked,
+        StoreError::Gate(GateError::NotLocked) => RpcError::NotLocked,
         StoreError::InvalidPrompt(_) | StoreError::Item(_) => RpcError::InvalidParams,
         StoreError::ItemMissing | StoreError::ItemSuspended => RpcError::InvalidParams,
         other => RpcError::Store(other.to_string()),
+    }
+}
+
+fn active_capability(fallback: LockCapability) -> LockCapability {
+    let detected = crate::wayland::detect_capability();
+    if detected != LockCapability::None {
+        detected
+    } else {
+        fallback
     }
 }
