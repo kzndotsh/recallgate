@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+/// Minimum time between freezes. Uses monotonic `Instant`; the daemon maps unlock events
+/// to `last_unlock` (not wall-clock `chrono` used on gate/answer records).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GateCadence {
     pub lock_interval: Duration,

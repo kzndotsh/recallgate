@@ -23,10 +23,28 @@ pub struct Item {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Answer {
-    pub item_id: ItemId,
-    pub chosen_index: ChoiceIndex,
-    pub correct: bool,
-    pub answered_at: DateTime<Utc>,
+    item_id: ItemId,
+    chosen_index: ChoiceIndex,
+    correct: bool,
+    answered_at: DateTime<Utc>,
+}
+
+impl Answer {
+    pub fn item_id(&self) -> ItemId {
+        self.item_id
+    }
+
+    pub fn chosen_index(&self) -> ChoiceIndex {
+        self.chosen_index
+    }
+
+    pub fn correct(&self) -> bool {
+        self.correct
+    }
+
+    pub fn answered_at(&self) -> DateTime<Utc> {
+        self.answered_at
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,8 +116,13 @@ impl Deck {
     }
 
     pub fn pick_item<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Option<ItemId> {
-        let eligible: Vec<ItemId> = self.deck_items();
-        eligible.choose(rng).copied()
+        self.items
+            .iter()
+            .filter(|item| !item.suspended)
+            .map(|item| item.id)
+            .collect::<Vec<_>>()
+            .choose(rng)
+            .copied()
     }
 
     pub fn get(&self, id: ItemId) -> Option<&Item> {
@@ -131,8 +154,8 @@ mod tests {
         let item = sample_item(ItemId::new(), false);
         let chosen = ChoiceIndex::try_new(0).expect("index");
         let answer = item.answer_for_choice(chosen, Utc::now());
-        assert!(!answer.correct);
-        assert_eq!(answer.item_id, item.id);
+        assert!(!answer.correct());
+        assert_eq!(answer.item_id(), item.id);
     }
 
     #[test]
@@ -140,7 +163,7 @@ mod tests {
         let item = sample_item(ItemId::new(), false);
         let chosen = ChoiceIndex::try_new(2).expect("index");
         let answer = item.answer_for_choice(chosen, Utc::now());
-        assert!(answer.correct);
+        assert!(answer.correct());
     }
 
     #[test]
