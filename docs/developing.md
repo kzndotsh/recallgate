@@ -78,7 +78,7 @@ nix develop
 cargo test --workspace
 ```
 
-The flake `devShell` installs the same libraries as the table above. Use it when you want pinned GTK/Wayland versions without matching distro packages. Merging does not require Nix; GitHub Actions uses apt on `ubuntu-24.04`.
+The flake `devShell` installs the same libraries as the table above and puts **`rust-toolchain.toml` on `PATH`** via [rust-overlay](https://github.com/oxalica/rust-overlay) (`fromRustupToolchainFile`). That matches rustup and CI (currently Rust 1.83.0 with `rustfmt` and `clippy`). Use it when you want pinned GTK/Wayland versions without matching distro packages. Merging does not require Nix; GitHub Actions uses apt on `ubuntu-24.04`.
 
 ## Continuous integration
 
