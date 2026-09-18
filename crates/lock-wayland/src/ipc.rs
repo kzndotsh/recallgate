@@ -38,7 +38,7 @@ pub fn spawn_listener(sender: Sender<ShowPrompt>) -> Result<(), String> {
             let Ok(msg) = serde_json::from_str::<ShowMessage>(line.trim()) else {
                 continue;
             };
-            if msg.choices.len() != 4 {
+            if msg.choices.len() != 4 || msg.correct_index >= 4 {
                 continue;
             }
             let mut choices = [String::new(), String::new(), String::new(), String::new()];

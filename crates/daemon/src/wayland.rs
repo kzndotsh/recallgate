@@ -11,7 +11,9 @@ pub fn detect_capability() -> LockCapability {
     if env::var("WAYLAND_DISPLAY").is_err() {
         return LockCapability::None;
     }
-    if wayland_ready_path().ok().is_some_and(|path| path.exists()) {
+    let ready = wayland_ready_path().ok().is_some_and(|path| path.exists());
+    let socket = wayland_ipc_path().ok().is_some_and(|path| path.exists());
+    if ready && socket {
         LockCapability::SessionLock
     } else {
         LockCapability::None

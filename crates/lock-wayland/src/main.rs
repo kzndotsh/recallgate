@@ -26,6 +26,13 @@ fn main() {
         eprintln!("{err}");
         process::exit(1);
     });
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    if let Err(err) = ipc::spawn_listener(sender) {
+        eprintln!("{err}");
+        process::exit(1);
+    }
+
     if let Some(parent) = ready_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -34,12 +41,6 @@ fn main() {
         process::exit(1);
     });
     let _ready_guard = ReadyGuard(ready_path);
-
-    let (sender, receiver) = std::sync::mpsc::channel();
-    if let Err(err) = ipc::spawn_listener(sender) {
-        eprintln!("{err}");
-        process::exit(1);
-    }
 
     let app = Application::builder().application_id(APP_ID).build();
     lock::run_app(app, receiver);

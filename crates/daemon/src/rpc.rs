@@ -161,9 +161,6 @@ impl DaemonState {
         let item = self.store.item(item_id).map_err(map_store)?.ok_or(RpcError::EmptyDeck)?;
 
         let gate_id = GateId::new();
-        let locked = LockedState::new(gate_id, item_id, Utc::now());
-        self.store.begin_lock(locked).map_err(map_store)?;
-
         let choices: Vec<String> = item.choices.as_slice().to_vec();
         let choices_arr: [String; 4] =
             choices.try_into().map_err(|_| RpcError::Store("bad choices".into()))?;
@@ -171,6 +168,9 @@ impl DaemonState {
             crate::wayland::notify_show(&item.stem, &choices_arr, item.correct_index.index())
                 .map_err(RpcError::Store)?;
         }
+
+        let locked = LockedState::new(gate_id, item_id, Utc::now());
+        self.store.begin_lock(locked).map_err(map_store)?;
 
         let choices_refs: Vec<&str> = item.choices.as_slice().iter().map(String::as_str).collect();
         Ok(json!({
