@@ -42,15 +42,17 @@ If your distribution ships `gtk4-layer-shell` older than 1.1.0, build [gtk4-laye
 
 ### Example: Ubuntu 24.04
 
+Noble has no `libgtk-4-layer-shell-dev`. X11 locker headers:
+
 ```bash
 sudo apt update
 sudo apt install -y \
   build-essential pkg-config \
-  libgtk-4-dev libgtk-4-layer-shell-dev \
-  libwayland-dev libxkbcommon-dev \
   libx11-dev libxrandr-dev \
   libsqlite3-dev
 ```
+
+Wayland `--features ui` needs GTK 4 and `gtk4-layer-shell` ≥ 1.1. Use `nix develop`, or build [gtk4-layer-shell](https://github.com/wmww/gtk4-layer-shell) from source on another distro that ships those packages.
 
 ## Everyday commands
 
@@ -110,7 +112,7 @@ Logs go to stderr; stdout is MCP JSON-RPC only.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs `make ci` (format, clippy, tests) without `--features ui` / `--features x11` so Ubuntu GTK/layer-shell versions cannot fail the merge gate. An optional `ui-check` job installs GTK/X11 packages and `cargo check`s those features; it uses `continue-on-error` because distro `gtk4-layer-shell` is often too old for `gtk4-session-lock`. Use `nix develop` for a feature-on compile. Commit subjects are checked by `conventional-commits.yml`. Locally, run `make check` before push to run both.
+`.github/workflows/ci.yml` runs `make ci` (format, clippy, tests) without `--features ui`. An `x11-check` job installs X11 headers and `cargo check`/`clippy`s `recallgate-lock-x11 --features x11`. Ubuntu 24.04 has no `libgtk-4-layer-shell-dev`, and `gtk4` 0.10 pulls `cfg-expr` that needs Cargo edition2024, so `--features ui` is not a CI job. Use `nix develop` for a Wayland UI compile. Commit subjects are checked by `conventional-commits.yml`. Locally, run `make check` before push to run both.
 
 ## Related docs
 
