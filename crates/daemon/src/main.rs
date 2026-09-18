@@ -9,7 +9,14 @@ use std::time::Duration;
 
 use recallgate_core::Store;
 use recallgate_daemon::rpc::DaemonState;
-use recallgate_daemon::wayland;
+use recallgate_daemon::{wayland, x11};
+
+fn startup_capability() -> recallgate_daemon::LockCapability {
+    if wayland::detect_capability() == recallgate_daemon::LockCapability::SessionLock {
+        return recallgate_daemon::LockCapability::SessionLock;
+    }
+    x11::detect_capability()
+}
 
 fn main() {
     if let Err(err) = run() {
@@ -24,7 +31,7 @@ fn run() -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
     let store = Store::open(&db_path).map_err(|err| err.to_string())?;
-    let capability = wayland::detect_capability();
+    let capability = startup_capability();
     let state = Arc::new(Mutex::new(DaemonState::new(store, capability)));
 
     let socket_path = runtime_socket_path()?;

@@ -167,6 +167,9 @@ impl DaemonState {
         if capability == LockCapability::SessionLock {
             crate::wayland::notify_show(&item.stem, &choices_arr, item.correct_index.index())
                 .map_err(RpcError::Store)?;
+        } else if capability == LockCapability::X11Grab {
+            crate::x11::notify_show(&item.stem, &choices_arr, item.correct_index.index())
+                .map_err(RpcError::Store)?;
         }
 
         let locked = LockedState::new(gate_id, item_id, Utc::now());
@@ -278,10 +281,13 @@ fn map_store(err: StoreError) -> RpcError {
 }
 
 fn active_capability(fallback: LockCapability) -> LockCapability {
-    let detected = crate::wayland::detect_capability();
-    if detected != LockCapability::None {
-        detected
-    } else {
-        fallback
+    let wayland = crate::wayland::detect_capability();
+    if wayland != LockCapability::None {
+        return wayland;
     }
+    let x11 = crate::x11::detect_capability();
+    if x11 != LockCapability::None {
+        return x11;
+    }
+    fallback
 }

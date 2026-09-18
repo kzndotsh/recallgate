@@ -88,6 +88,14 @@ cargo build -p recallgate-lock-wayland --features ui
 
 Run `recallgate-lock-wayland` alongside `recallgate-daemon` on a compositor that supports `ext-session-lock-v1`.
 
+Build the X11 locker (needs X11 and RandR development libraries):
+
+```bash
+cargo build -p recallgate-lock-x11 --features x11
+```
+
+Run `recallgate-lock-x11` with `recallgate-daemon` on a pure X11 session (for example Xephyr).
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs `make ci` (format, clippy, tests). Commit subjects are checked by `conventional-commits.yml`. Locally, run `make check` before push to run both.
