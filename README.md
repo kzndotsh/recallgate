@@ -1,27 +1,27 @@
 # Recall Gate
 
-Freeze the desktop until you answer one multiple-choice card.
+Recall Gate locks every monitor until you answer one question with four choices. It sits between you and the desktop you already have, so review is not something you can postpone for “after this tab.”
 
-Wrong answers still unlock after the correct choice flashes. Abort exists and costs more than answering. Agents can enqueue cards or start a freeze. They cannot unlock.
+Pick the right number (or click the row) and the session continues. Pick wrong and it still continues, after it shows the right answer. There is no skip. Abort exists, but it is deliberately worse than answering: hold Ctrl+Shift+Escape, type `ABORT`, then you get about a minute before the lock comes back.
 
-Recall Gate is gate-first: a local MCQ deck and scheduling support the freeze, not the other way around. Optional import from external decks is a later feature.
+Other programs (including chat agents) can add cards or start a lock. They cannot unlock.
 
-The workspace is a Rust crate set: `recallgate-core`, `recallgate-daemon`, `recallgate-lock-wayland`, `recallgate-lock-x11`, and `recallgate-mcp`. Specs live in [docs/plan.md](docs/plan.md) and [docs/domain.md](docs/domain.md).
+Cards are stored on this computer. Importing an external deck is not in v0.
 
-## Developing
+On Wayland (Sway and similar) the lock is a real session lock: if the lock program crashes, the screens stay blank until you start it again or switch to a TTY. On X11 it is only a grab. If that program crashes, the session comes back.
 
-See [docs/developing.md](docs/developing.md) for toolchain setup, distro packages, and `make check`.
+## Build and run
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for PR scope and product rules.
+Toolchain, distro packages, and `make check` are in [docs/developing.md](docs/developing.md). Nix is optional (`nix develop`).
 
-Nix is optional: `nix develop` provides the same libraries as the documented apt/dnf/pacman lists.
+How we take PRs: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Docs
 
-- [Agent guide](AGENTS.md) (for coding agents)
-- [Developing](docs/developing.md)
-- [Why it exists](docs/product.md)
-- [Types and illegal states](docs/domain.md)
-- [Daemon RPC and MCP](docs/protocol.md)
-- [Wayland vs X11 vs later OS](docs/platforms.md)
-- [PR stack and verification](docs/plan.md)
+- [Why this exists](docs/product.md)
+- [How to develop](docs/developing.md)
+- [What the words mean](docs/domain.md)
+- [Daemon and agent API](docs/protocol.md)
+- [Wayland vs X11](docs/platforms.md)
+- [Build order and live tests](docs/plan.md)
+- [Notes for coding agents](AGENTS.md)
